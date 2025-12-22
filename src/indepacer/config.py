@@ -13,9 +13,9 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 CONFIG_DIR = Path.home() / ".config" / "indepacer"
@@ -56,7 +56,15 @@ class PacerConfig(BaseSettings):
     rate_limit_rpm: float = 30.0  # Requests per minute (default: 30)
     peak_warning: bool = True  # Show peak hours warnings (6AM-6PM CST)
     audit_log: bool = True  # Enable audit logging
-    tls_level: str = "strict"  # TLS security level: standard, strict, paranoid
+    tls_level: Literal["standard", "strict", "paranoid"] = "strict"  # TLS security level
+    
+    @field_validator("rate_limit_rpm")
+    @classmethod
+    def validate_rate_limit_rpm(cls, v: float) -> float:
+        """Validate rate_limit_rpm is positive."""
+        if v <= 0:
+            raise ValueError(f"rate_limit_rpm must be positive, got {v}")
+        return v
 
     # Legacy paths (deprecated, kept for backward compatibility)
     output_dir: Path = Path("./results")

@@ -40,12 +40,13 @@ logger = logging.getLogger("indepacer.security")
 # CONSTANTS
 # =============================================================================
 
-# CST timezone offset (UTC-6)
-CST_OFFSET_HOURS = -6
+# Central timezone (handles both CST and CDT automatically)
+# CST = UTC-6, CDT = UTC-5
+CENTRAL_TZ_NAME = "America/Chicago"
 
-# Peak hours: 6AM-6PM CST (bulk downloads should be avoided)
-PEAK_HOUR_START = 6   # 6 AM CST
-PEAK_HOUR_END = 18    # 6 PM CST
+# Peak hours: 6AM-6PM Central Time (bulk downloads should be avoided)
+PEAK_HOUR_START = 6   # 6 AM Central
+PEAK_HOUR_END = 18    # 6 PM Central
 
 # Default rate limits (requests per minute)
 DEFAULT_RATE_LIMIT = 30  # 30 requests per minute = 1 every 2 seconds
@@ -91,14 +92,22 @@ class PeakHoursInfo:
 
 
 def get_current_cst_hour() -> int:
-    """Get current hour in CST (Central Standard Time).
+    """Get current hour in Central Time (handles both CST and CDT).
 
-    Note: This uses a fixed CST offset. For proper CDT handling,
-    you would need to check if DST is active.
+    Uses zoneinfo to properly handle Daylight Saving Time transitions.
+    Falls back to fixed offset if zoneinfo is unavailable.
     """
-    utc_now = datetime.now(timezone.utc)
-    cst_hour = (utc_now.hour + CST_OFFSET_HOURS) % 24
-    return cst_hour
+    try:
+        from zoneinfo import ZoneInfo
+        central_tz = ZoneInfo(CENTRAL_TZ_NAME)
+        central_now = datetime.now(central_tz)
+        return central_now.hour
+    except (ImportError, Exception):
+        # Fallback: Use fixed UTC-6 offset (CST)
+        # This is approximate and doesn't handle CDT
+        utc_now = datetime.now(timezone.utc)
+        cst_hour = (utc_now.hour - 6) % 24
+        return cst_hour
 
 
 def check_peak_hours() -> PeakHoursInfo:
@@ -255,6 +264,13 @@ def get_rate_limiter(requests_per_minute: Optional[float] = None) -> RateLimiter
         return _global_rate_limiter
 
 
+def reset_rate_limiter() -> None:
+    """Reset the global rate limiter (useful for testing)."""
+    global _global_rate_limiter
+    with _rate_limiter_lock:
+        _global_rate_limiter = None
+
+
 def rate_limited(func: Callable) -> Callable:
     """Decorator to apply rate limiting to a function.
 
@@ -302,8 +318,9 @@ def create_secure_ssl_context(level: TLSSecurityLevel = TLSSecurityLevel.STRICT)
         ctx.check_hostname = True
         ctx.verify_mode = ssl.CERT_REQUIRED
 
-        # Disable weak ciphers
-        ctx.set_ciphers("ECDHE+AESGCM:DHE+AESGCM:ECDHE+CHACHA20:DHE+CHACHA20")
+        # Use only strong ciphers (ECDHE only, no DHE due to known vulnerabilities)
+        # Prioritize AESGCM and ChaCha20
+        ctx.set_ciphers("ECDHE+AESGCM:ECDHE+CHACHA20:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA")
 
     if level == TLSSecurityLevel.PARANOID:
         # TLS 1.3 only (if supported by OpenSSL version)
@@ -392,11 +409,31 @@ class StreamingDownload:
 
     Prevents memory exhaustion by streaming large files to disk
     instead of loading them entirely into memory.
+    
+    Use as context manager to ensure response is properly closed:
+        with StreamingDownload(response) as download:
+            download.save_to_file(path)
     """
 
     response: requests.Response
     chunk_size: int = STREAM_CHUNK_SIZE
     _bytes_downloaded: int = 0
+
+    def __enter__(self):
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context manager, closing response."""
+        self.close()
+        return False
+
+    def close(self) -> None:
+        """Close the underlying response to free connection."""
+        try:
+            self.response.close()
+        except Exception:
+            pass
 
     def iter_content(self) -> Iterator[bytes]:
         """Iterate over response content in chunks.
@@ -472,10 +509,17 @@ def streaming_download(
         stream=True,
         timeout=timeout,
     )
-    response.raise_for_status()
-
-    downloader = StreamingDownload(response)
-    return downloader.save_to_file(filepath)
+    
+    try:
+        response.raise_for_status()
+        
+        # Use context manager to ensure response is closed
+        with StreamingDownload(response) as downloader:
+            return downloader.save_to_file(filepath)
+    except Exception:
+        # Ensure response is closed on error
+        response.close()
+        raise
 
 
 def safe_response_content(
@@ -483,9 +527,13 @@ def safe_response_content(
     max_size: int = MAX_MEMORY_RESPONSE_SIZE,
 ) -> bytes:
     """Safely get response content with size limit.
+    
+    IMPORTANT: The response must not have been consumed yet (response.content
+    or response.text not yet accessed). This function will consume the response
+    by iterating through its content.
 
     Args:
-        response: Requests response object
+        response: Requests response object (must be unconsumed)
         max_size: Maximum bytes to load into memory
 
     Returns:
@@ -629,6 +677,12 @@ def get_audit_logger() -> AuditLogger:
     return _audit_logger
 
 
+def reset_audit_logger() -> None:
+    """Reset the global audit logger (useful for testing)."""
+    global _audit_logger
+    _audit_logger = None
+
+
 def audit_request(operation: str) -> Callable:
     """Decorator to automatically audit a function's network requests.
 
@@ -742,15 +796,61 @@ class SecurityConfig:
 
     @classmethod
     def from_env(cls) -> "SecurityConfig":
-        """Load security config from environment variables."""
+        """Load security config from environment variables.
+        
+        Validates all environment variable values and provides helpful
+        error messages for invalid inputs.
+        
+        Raises:
+            ValueError: If environment variables contain invalid values
+        """
         import os
 
-        return cls(
-            rate_limit_enabled=os.environ.get("PACER_RATE_LIMIT", "true").lower() == "true",
-            requests_per_minute=float(os.environ.get("PACER_RATE_LIMIT_RPM", str(DEFAULT_RATE_LIMIT))),
-            peak_hours_warning=os.environ.get("PACER_PEAK_WARNING", "true").lower() == "true",
-            audit_logging_enabled=os.environ.get("PACER_AUDIT_LOG", "true").lower() == "true",
-        )
+        # Parse boolean with validation
+        def parse_bool(env_var: str, default: str = "true") -> bool:
+            value = os.environ.get(env_var, default).lower()
+            if value in ("true", "1", "yes", "on"):
+                return True
+            elif value in ("false", "0", "no", "off"):
+                return False
+            else:
+                raise ValueError(
+                    f"Invalid boolean value for {env_var}: '{value}'. "
+                    f"Use: true/false, 1/0, yes/no, or on/off"
+                )
+
+        # Parse float with validation
+        def parse_float(env_var: str, default: str, min_value: float = 0.1) -> float:
+            value_str = os.environ.get(env_var, default)
+            try:
+                value = float(value_str)
+                if value < min_value:
+                    raise ValueError(
+                        f"Invalid value for {env_var}: {value}. "
+                        f"Must be >= {min_value}"
+                    )
+                return value
+            except ValueError as e:
+                if "could not convert" in str(e).lower():
+                    raise ValueError(
+                        f"Invalid float value for {env_var}: '{value_str}'. "
+                        f"Must be a positive number"
+                    )
+                raise
+
+        try:
+            return cls(
+                rate_limit_enabled=parse_bool("PACER_RATE_LIMIT", "true"),
+                requests_per_minute=parse_float("PACER_RATE_LIMIT_RPM", str(DEFAULT_RATE_LIMIT), min_value=0.1),
+                peak_hours_warning=parse_bool("PACER_PEAK_WARNING", "true"),
+                audit_logging_enabled=parse_bool("PACER_AUDIT_LOG", "true"),
+            )
+        except ValueError as e:
+            # Re-raise with helpful context
+            raise ValueError(
+                f"Configuration error: {e}\n"
+                f"Check your environment variables or ~/.config/indepacer/config.env"
+            ) from e
 
 
 # Global security config

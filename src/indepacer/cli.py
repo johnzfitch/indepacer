@@ -44,7 +44,7 @@ err_console = Console(stderr=True)
 # ============================================================================
 
 
-def show_peak_hours_warning(document_count: int = 1, page_count: int = 0) -> bool:
+def show_peak_hours_warning(document_count: int = 1, page_count: int = 0) -> None:
     """Display PACER peak hours warning if needed.
 
     PACER requests that large bulk downloads be performed from 6PM-6AM CST.
@@ -54,9 +54,6 @@ def show_peak_hours_warning(document_count: int = 1, page_count: int = 0) -> boo
     Args:
         document_count: Number of documents being downloaded
         page_count: Estimated page count
-
-    Returns:
-        True if operation should proceed, False if blocked
     """
     peak_info = check_peak_hours()
     is_bulk = is_bulk_download(document_count, page_count)
@@ -76,11 +73,10 @@ def show_peak_hours_warning(document_count: int = 1, page_count: int = 0) -> boo
             border_style="yellow",
         ))
         console.print()
-        return True  # Still allow, but warn
 
     elif not is_bulk and peak_info.period == DownloadPeriod.PEAK:
         # Small operation during peak - no warning needed
-        return True
+        pass
 
     else:
         # Off-peak period - bulk downloads are appropriate
@@ -89,7 +85,6 @@ def show_peak_hours_warning(document_count: int = 1, page_count: int = 0) -> boo
                 f"[dim]Off-peak period ({peak_info.current_hour_cst}:00 CST) - "
                 "bulk downloads appropriate[/dim]"
             )
-        return True
 
 
 def show_pacer_policy_banner() -> None:
