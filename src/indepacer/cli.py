@@ -1,6 +1,7 @@
 """PACER CLI - Command-line interface for legal document research."""
 
 import csv
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -8,7 +9,7 @@ from typing import Optional
 import click
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.table import Table
 
 from .config import (
@@ -25,6 +26,85 @@ from .config import (
 
 console = Console()
 err_console = Console(stderr=True)
+
+
+# ============================================================================
+# COMMAND ALIAS SUPPORT
+# ============================================================================
+
+# Maps short aliases to full command paths
+COMMAND_ALIASES = {
+    # Top-level shortcuts
+    "docket": ["download", "docket"],
+    "doc": ["download", "document"],
+    "grep": ["search"],
+    "find": ["search"],
+    
+    # Alternative PCL shortcuts
+    "cases": ["pcl", "cases"],
+    "parties": ["pcl", "parties"],
+}
+
+
+class AliasGroup(click.Group):
+    """Click Group that supports command aliases.
+    
+    Allows users to use shorter command names that map to full paths.
+    Example: 'pacer docket' -> 'pacer download docket'
+    """
+    
+    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
+        # Try exact match first
+        rv = click.Group.get_command(self, ctx, cmd_name)
+        if rv is not None:
+            return rv
+        
+        # Check if it's an alias
+        if cmd_name in COMMAND_ALIASES:
+            alias_path = COMMAND_ALIASES[cmd_name]
+            
+            # For single-element paths, just look up directly
+            if len(alias_path) == 1:
+                return click.Group.get_command(self, ctx, alias_path[0])
+            
+            # For multi-part paths (e.g., ["download", "docket"]),
+            # navigate through subgroups
+            current_group = self
+            for i, part in enumerate(alias_path[:-1]):
+                sub_cmd = click.Group.get_command(current_group, ctx, part)
+                if sub_cmd is None or not isinstance(sub_cmd, click.Group):
+                    return None
+                current_group = sub_cmd
+            
+            return click.Group.get_command(current_group, ctx, alias_path[-1])
+        
+        return None
+    
+    def resolve_command(self, ctx: click.Context, args: list) -> tuple:
+        """Resolve command, handling multi-part aliases."""
+        cmd_name = args[0] if args else None
+        
+        if cmd_name and cmd_name in COMMAND_ALIASES:
+            alias_path = COMMAND_ALIASES[cmd_name]
+            
+            # Get the actual command
+            cmd = self.get_command(ctx, cmd_name)
+            if cmd:
+                return cmd_name, cmd, args[1:]
+        
+        return super().resolve_command(ctx, args)
+    
+    def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        """Add aliases section to help output."""
+        super().format_commands(ctx, formatter)
+        
+        # Show aliases in help
+        with formatter.section("Aliases"):
+            alias_rows = []
+            for alias, path in sorted(COMMAND_ALIASES.items()):
+                full_cmd = " ".join(path)
+                alias_rows.append((alias, f"→ {full_cmd}"))
+            formatter.write_dl(alias_rows)
 
 
 # ============================================================================
@@ -87,7 +167,7 @@ def confirm_cost_pages(
     return confirm_cost(ctx, operation, estimated_cost, full_details)
 
 
-@click.group()
+@click.group(cls=AliasGroup)
 @click.version_option()
 @click.option("--yes", "-y", is_flag=True, help="Skip cost confirmation prompts")
 @click.pass_context
@@ -100,10 +180,18 @@ def cli(ctx, yes: bool):
 
     \b
     Quick start:
-      pacer auth login         Configure PACER credentials
-      pacer download docket    Download a case docket
-      pacer parse all          Parse downloaded dockets
-      pacer search             Search parsed docket entries
+      pacer auth login               Configure PACER credentials
+      pacer docket nysd 1:18-cv-08434   Download a docket
+      pacer view                     View the downloaded docket
+      pacer doc 31                   Download document #31
+
+    \b
+    Short aliases:
+      pacer docket   →  pacer download docket
+      pacer doc      →  pacer download document  
+      pacer grep     →  pacer search
+      pacer cases    →  pacer pcl cases
+      pacer parties  →  pacer pcl parties
 
     \b
     Cost confirmation:
@@ -113,6 +201,192 @@ def cli(ctx, yes: bool):
     ctx.ensure_object(dict)
     ctx.obj["config"] = get_config()
     ctx.obj["auto_confirm"] = yes
+    
+    # Check for legacy archive on first run (unless migrated)
+    if not migration_marker_exists():
+        legacy_path = check_legacy_archive()
+        if legacy_path:
+            legacy_count = len(list(legacy_path.glob("*.html")))
+            if legacy_count > 0:
+                console.print()
+                console.print(Panel(
+                    f"[yellow]Found {legacy_count} files in legacy archive format.[/]\n\n"
+                    f"Run [cyan]pacer migrate[/] to reorganize into the new structure:\n"
+                    f"  ~/.pacer/<court>/<case>/docket.html\n\n"
+                    f"[dim]This enables context-aware commands and doc link caching.[/]",
+                    title="Migration Available",
+                    border_style="yellow",
+                ))
+
+
+# ============================================================================
+# MIGRATE COMMAND
+# ============================================================================
+
+
+@cli.command("migrate")
+@click.option("--dry-run", is_flag=True, help="Show what would be moved without moving")
+@click.option("--legacy-dir", type=click.Path(exists=True, path_type=Path), help="Legacy archive directory")
+@click.pass_context
+def migrate_archive(ctx, dry_run: bool, legacy_dir: Optional[Path]):
+    """Migrate from legacy flat archive to new hierarchical structure.
+
+    \b
+    Moves files from:
+      ./results/local_docket_archive/nysdce_1+2018cv08434.html
+
+    \b
+    To:
+      ~/.pacer/nysd/1-2018cv08434/docket.html
+
+    Also generates docs.json for each docket (enables auto-resolution of doc links).
+
+    \b
+    Examples:
+      pacer migrate --dry-run          # Preview changes
+      pacer migrate                    # Perform migration
+      pacer migrate --legacy-dir ./old # Migrate from custom location
+    """
+    from .parser import parse_docket
+    from .downloader import extract_document_links
+    
+    config: PacerConfig = ctx.obj["config"]
+    
+    # Find legacy files
+    source_dir = legacy_dir or config.docket_archive
+    if not source_dir.exists():
+        console.print(f"[yellow]No legacy archive found at:[/] {source_dir}")
+        return
+    
+    # Pattern: {court}_{case}.html where case has + for :
+    legacy_pattern = re.compile(r"^([a-z]{2,5}dce)_(.+)\.html$")
+    
+    files_to_migrate = []
+    for html_file in source_dir.glob("*.html"):
+        match = legacy_pattern.match(html_file.name)
+        if match:
+            court_id = match.group(1)
+            case_raw = match.group(2)
+            # Normalize: nysdce -> nysd, 1+2018cv08434 -> 1-2018cv08434
+            court_normalized = court_id.rstrip("e").rstrip("c")
+            case_normalized = case_raw.replace("+", "-").replace(":", "-")
+            files_to_migrate.append({
+                "source": html_file,
+                "court": court_normalized,
+                "case": case_normalized,
+                "target_dir": config.archive_root / court_normalized / case_normalized,
+            })
+    
+    if not files_to_migrate:
+        console.print("[yellow]No legacy docket files found to migrate.[/]")
+        if not dry_run:
+            mark_migration_complete()
+        return
+    
+    console.print(f"[cyan]Found {len(files_to_migrate)} dockets to migrate[/]\n")
+    
+    if dry_run:
+        table = Table(title="Migration Preview")
+        table.add_column("Source", style="dim")
+        table.add_column("Target", style="green")
+        
+        for item in files_to_migrate[:20]:
+            table.add_row(
+                item["source"].name,
+                str(item["target_dir"] / "docket.html"),
+            )
+        
+        console.print(table)
+        if len(files_to_migrate) > 20:
+            console.print(f"[dim]... and {len(files_to_migrate) - 20} more[/]")
+        
+        console.print(f"\n[dim]Run without --dry-run to perform migration.[/]")
+        return
+    
+    # Perform migration
+    migrated = 0
+    skipped = 0
+    errors = 0
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Migrating dockets...", total=len(files_to_migrate))
+        
+        for item in files_to_migrate:
+            try:
+                target_dir = item["target_dir"]
+                target_html = target_dir / "docket.html"
+                
+                # Skip if already migrated
+                if target_html.exists():
+                    skipped += 1
+                    progress.advance(task)
+                    continue
+                
+                # Create target directory
+                target_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Copy docket file
+                source_html = item["source"]
+                html_content = source_html.read_text(encoding="utf-8", errors="ignore")
+                target_html.write_text(html_content, encoding="utf-8")
+                
+                # Generate docs.json from the docket
+                try:
+                    docket = parse_docket(html_content)
+                    doc_links = extract_document_links(html_content, docket)
+                    
+                    if doc_links:
+                        import json
+                        docs_json = target_dir / "docs.json"
+                        docs_data = {
+                            "case_number": docket.meta.case_number,
+                            "case_title": docket.meta.case_title,
+                            "court": item["court"],
+                            "document_count": len(doc_links),
+                            "documents": doc_links,
+                        }
+                        docs_json.write_text(json.dumps(docs_data, indent=2))
+                except Exception:
+                    # docs.json generation failed, but docket copy still succeeds
+                    pass
+                
+                migrated += 1
+                
+            except Exception as e:
+                err_console.print(f"[red]Error migrating {item['source'].name}:[/] {e}")
+                errors += 1
+            
+            progress.advance(task)
+    
+    console.print()
+    console.print(f"[green]Migrated:[/] {migrated} dockets")
+    if skipped:
+        console.print(f"[dim]Skipped:[/] {skipped} (already exist)")
+    if errors:
+        console.print(f"[red]Errors:[/] {errors}")
+    
+    console.print(f"\n[dim]New archive location:[/] {config.archive_root}")
+    
+    # Mark migration complete
+    mark_migration_complete()
+    
+    console.print()
+    console.print(Panel(
+        "[green]Migration complete![/]\n\n"
+        "You can now use context-aware commands:\n"
+        "  [cyan]pacer use case nysd 1-2018cv08434[/]\n"
+        "  [cyan]pacer view[/]\n"
+        "  [cyan]pacer doc 31[/]  (auto-resolves link)\n\n"
+        "[dim]Legacy files were copied (not moved). Delete manually if desired.[/]",
+        title="Next Steps",
+        border_style="green",
+    ))
 
 
 # ============================================================================
