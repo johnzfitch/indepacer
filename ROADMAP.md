@@ -1,100 +1,80 @@
 # indepacer Roadmap
 
-## v0.2.0 - UX Redesign (In Progress)
+## v0.2.0 - UX Redesign (Complete)
 
 Major usability improvements to reduce friction and prevent cost accidents.
 
-### Features
-
-| Status | Feature | Description |
-|--------|---------|-------------|
-| In Progress | Auto-resolve doc links | Cache `docs.json` when downloading dockets so `pacer fetch doc 31` works |
-| In Progress | Cost confirmation | Prompt before billable operations, `--yes` to skip |
-| In Progress | Structured archive | `~/.pacer/court/case/` hierarchy replaces flat files |
-| In Progress | `pacer view` | View parsed dockets without specifying full paths |
-| In Progress | Interactive selection | Select from PCL results instead of copy-paste |
-| In Progress | Context defaults | `pacer use` sets working court/case |
-| In Progress | Better errors | Actionable error messages with next steps |
-
-### Architecture
-
-```
-~/.pacer/
-  config/
-    context.json         # Active court/case
-  archives/
-    nysd/
-      1-18-cv-08434/
-        docket.html      # Raw HTML
-        docs.json        # Document manifest
-        documents/
-          001.pdf
-```
-
-Credentials remain at `~/.config/indepacer/config.env`
-
-### New Commands
-
-```bash
-# Fetch (replaces download)
-pacer fetch docket <court> <case>
-pacer fetch doc <court> <case> <doc_num>
-
-# View
-pacer view [case]
-pacer view --format json
-
-# Context
-pacer use <court> <case>
-pacer use --clear
-
-# Document list
-pacer docs [case]
-```
-
-### Breaking Changes
-
-- Archive path changes from `results/local_docket_archive/` to `~/.pacer/archives/`
-- `download` commands renamed to `fetch`
-- `parse text` merged into `view`
-
-### Migration
-
-Run `pacer migrate` to move existing files to new structure.
+| Status | Feature |
+|--------|---------|
+| Done | Auto-resolve doc links (docs.json caching) |
+| Done | Cost confirmation with --yes flag |
+| Done | Structured archive (~/.pacer/archives/) |
+| Done | `pacer view` command |
+| Done | Interactive selection (-i flag) |
+| Done | Context defaults (`pacer use`) |
+| Done | Actionable error messages |
+| Done | Command aliases (docket, doc, grep, cases, parties) |
+| Done | `pacer migrate` for legacy archives |
 
 ---
 
-## v0.1.0 - Current Release
+## v0.2.1 - Polish
 
-Initial release with core functionality:
-
-- PACER authentication with MFA support
-- Docket and document downloads
-- PCL (PACER Case Locator) search
-- HTML parsing with selectolax
-- Batch operations
+- [ ] Version bump to 0.2.0 in pyproject.toml
+- [ ] Complete party/attorney extraction in fast parser
+- [ ] `pacer stats` - Archive statistics
+- [ ] `pacer cache clear/size` - Cache management
+- [ ] CHANGELOG.md
 
 ---
 
-## Future Considerations
-
-### v0.3.0 - Analysis Features
+## v0.3.0 - Analysis Features
 
 - [ ] Full-text search across downloaded documents (PDF text extraction)
 - [ ] Party/attorney relationship graphs
 - [ ] Case timeline visualization
-- [ ] Export to legal citation formats
+- [ ] Export to legal citation formats (BibTeX, Westlaw)
+- [ ] Judge/court analytics
+- [ ] Case outcome dashboard
+- [ ] Docket diff/comparison
 
-### v0.4.0 - Automation
+---
+
+## v0.4.0 - Automation
 
 - [ ] Watch mode for case updates
+- [ ] Docket change detection (diff algorithm)
 - [ ] Webhook notifications
-- [ ] Calendar integration for deadlines
+- [ ] Calendar integration for deadlines (.ics export)
 - [ ] Slack/Teams alerts
+- [ ] Email alerts
+- [ ] Digest batching (daily/weekly summaries)
 
-### Infrastructure
+---
 
+## v0.5.0 - Integrations
+
+- [ ] Browser extension (Chrome/Firefox)
+- [ ] API server mode (`pacer serve`)
+- [ ] LLM tool integration (structured output for function calling)
+
+---
+
+## Infrastructure
+
+### Build/Release
 - [ ] PyPI publication
 - [ ] Docker image
 - [ ] GitHub Actions CI/CD
+- [ ] Release automation workflow
+
+### Quality
 - [ ] Test coverage reporting
+- [ ] Pre-commit hooks (ruff, mypy)
+- [ ] Security scanning (dependabot, bandit)
+- [ ] Type checking (mypy strict)
+
+### Documentation
+- [ ] ReadTheDocs setup
+- [ ] API reference (Sphinx/mkdocs)
+- [ ] Man page for CLI
