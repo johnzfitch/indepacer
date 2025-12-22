@@ -1,8 +1,8 @@
-# indepacer
+# ![console](icons/console.png) indepacer
 
 A CLI for PACER (Public Access to Court Electronic Records) federal court research.
 
-## Installation
+## ![download](icons/download.png) Installation
 
 ```bash
 pip install indepacer
@@ -11,7 +11,7 @@ pip install indepacer
 pip install 'indepacer[full]'
 ```
 
-## Quick Start
+## ![checkbox](icons/checkbox.png) Quick Start
 
 ```bash
 # 1. Configure credentials
@@ -63,7 +63,7 @@ pacer pcl cases -t "IBM" -c nysd -i
 
 ---
 
-## Command Reference
+## ![document](icons/document.png) Command Reference
 
 ### Global Options
 
@@ -83,7 +83,7 @@ pacer -y download docket 1:18-cv-08434 nysd   # no prompt
 
 ---
 
-## Authentication
+## ![key](icons/key.png) Authentication
 
 ### pacer auth login
 
@@ -155,7 +155,7 @@ pacer auth logout
 
 ---
 
-## Context
+## ![folder](icons/folder.png) Context
 
 The context system remembers your active case so you don't have to repeat court/case arguments.
 
@@ -209,7 +209,7 @@ pacer use clear
 
 ---
 
-## Download
+## ![download](icons/download.png) Download
 
 ### pacer download docket
 
@@ -312,7 +312,7 @@ pacer download batch cases.csv -c court -n case_num  # custom columns
 
 ---
 
-## Documents
+## ![pdf](icons/pdf.png) Documents
 
 ### pacer docs
 
@@ -345,7 +345,7 @@ The `docs.json` manifest is created automatically when downloading a docket. Use
 
 ---
 
-## View
+## ![document](icons/document.png) View
 
 ### pacer view
 
@@ -431,7 +431,7 @@ pacer parse file ~/.pacer/archives/nysd/1-18-cv-08434/docket.html --json
 
 ---
 
-## Search
+## ![search](icons/search.png) Search
 
 ### pacer search
 
@@ -466,7 +466,7 @@ pacer search -r order -o results --individual
 
 ---
 
-## PCL (PACER Case Locator)
+## ![search](icons/search.png) PCL (PACER Case Locator)
 
 Search the nationwide federal court case index.
 
@@ -681,7 +681,7 @@ Shows: username, password status, output directories.
 
 ---
 
-## Configuration
+## ![database](icons/database.png) Configuration
 
 ### Credentials
 
@@ -726,7 +726,7 @@ Credentials are stored separately in `~/.config/indepacer/config.env`.
 
 ---
 
-## Multi-Factor Authentication
+## ![lock](icons/lock.png) Multi-Factor Authentication
 
 PACER requires MFA for CM/ECF filing accounts by December 2025.
 
@@ -753,7 +753,7 @@ pacer auth test --otp 123456
 
 ---
 
-## Python API
+## ![console](icons/console.png) Python API
 
 ```python
 from indepacer.parser import parse_docket, parse_docket_file
@@ -786,7 +786,7 @@ text = parse_docket_file(Path("docket.html"), "compact")
 
 ---
 
-## Costs
+## ![warning](icons/warning.png) Costs
 
 PACER charges per page viewed:
 
