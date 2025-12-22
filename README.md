@@ -3,7 +3,7 @@
 A CLI for PACER (Public Access to Court Electronic Records) federal court research.
 
 ## ![download](icons/download.png) Installation
-
+![preview](preview.png)
 ```bash
 pip install indepacer
 
