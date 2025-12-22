@@ -1,4 +1,13 @@
-"""Configuration management for PACER credentials and settings."""
+"""Configuration management for PACER credentials and settings.
+
+Security Configuration:
+- Rate limiting: PACER_RATE_LIMIT, PACER_RATE_LIMIT_RPM
+- Peak hours warning: PACER_PEAK_WARNING
+- Audit logging: PACER_AUDIT_LOG
+- TLS security level: PACER_TLS_LEVEL (standard, strict, paranoid)
+
+All settings can be configured via environment variables or config file.
+"""
 
 import json
 import os
@@ -41,6 +50,13 @@ class PacerConfig(BaseSettings):
     totp_secret: Optional[SecretStr] = None  # Base32-encoded TOTP secret for MFA
     client_code: Optional[str] = None  # Optional client code for billing
     use_qa: bool = False  # Use QA environment instead of production
+
+    # Security settings
+    rate_limit: bool = True  # Enable rate limiting (recommended)
+    rate_limit_rpm: float = 30.0  # Requests per minute (default: 30)
+    peak_warning: bool = True  # Show peak hours warnings (6AM-6PM CST)
+    audit_log: bool = True  # Enable audit logging
+    tls_level: str = "strict"  # TLS security level: standard, strict, paranoid
 
     # Legacy paths (deprecated, kept for backward compatibility)
     output_dir: Path = Path("./results")

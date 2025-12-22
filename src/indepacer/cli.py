@@ -1,4 +1,10 @@
-"""PACER CLI - Command-line interface for legal document research."""
+"""PACER CLI - Command-line interface for legal document research.
+
+Security Features:
+- Peak hours detection: Warns users about PACER bulk download policies
+- Large bulk downloads should be performed 6PM-6AM CST
+- Excessive peak-hour usage may risk account closure
+"""
 
 import csv
 import sys
@@ -22,9 +28,79 @@ from .config import (
     migration_marker_exists,
     save_credentials,
 )
+from .security import (
+    check_peak_hours,
+    DownloadPeriod,
+    is_bulk_download,
+    format_peak_hours_banner,
+)
 
 console = Console()
 err_console = Console(stderr=True)
+
+
+# ============================================================================
+# PACER USAGE POLICY HELPERS
+# ============================================================================
+
+
+def show_peak_hours_warning(document_count: int = 1, page_count: int = 0) -> bool:
+    """Display PACER peak hours warning if needed.
+
+    PACER requests that large bulk downloads be performed from 6PM-6AM CST.
+    This function checks current time and download size to determine if
+    a warning should be displayed.
+
+    Args:
+        document_count: Number of documents being downloaded
+        page_count: Estimated page count
+
+    Returns:
+        True if operation should proceed, False if blocked
+    """
+    peak_info = check_peak_hours()
+    is_bulk = is_bulk_download(document_count, page_count)
+
+    if peak_info.period == DownloadPeriod.PEAK and is_bulk:
+        console.print()
+        console.print(Panel(
+            "[bold yellow]PACER USAGE REMINDER[/bold yellow]\n\n"
+            f"Current time: {peak_info.current_hour_cst}:00 CST (Peak Hours)\n\n"
+            "[bold]Large bulk downloads should be performed 6PM-6AM CST.[/bold]\n"
+            "Excessive downloads during peak hours (6AM-6PM CST) may risk\n"
+            "closure of your PACER account.\n\n"
+            f"Off-peak period begins in: [cyan]{peak_info.hours_until_off_peak} hour(s)[/cyan]\n\n"
+            "[dim]This warning is shown because this operation involves bulk downloads.\n"
+            "Single document/docket downloads are generally fine during peak hours.[/dim]",
+            title="Federal Court System Request",
+            border_style="yellow",
+        ))
+        console.print()
+        return True  # Still allow, but warn
+
+    elif not is_bulk and peak_info.period == DownloadPeriod.PEAK:
+        # Small operation during peak - no warning needed
+        return True
+
+    else:
+        # Off-peak period - bulk downloads are appropriate
+        if is_bulk:
+            console.print(
+                f"[dim]Off-peak period ({peak_info.current_hour_cst}:00 CST) - "
+                "bulk downloads appropriate[/dim]"
+            )
+        return True
+
+
+def show_pacer_policy_banner() -> None:
+    """Display a brief reminder about PACER usage policies."""
+    peak_info = check_peak_hours()
+
+    if peak_info.period == DownloadPeriod.PEAK:
+        console.print(
+            f"[dim yellow]Peak hours ({peak_info.current_hour_cst}:00 CST) - "
+            f"off-peak in {peak_info.hours_until_off_peak}h[/dim yellow]"
+        )
 
 
 # ============================================================================
@@ -287,6 +363,43 @@ def auth_status(ctx):
             title="Multi-Factor Authentication",
             border_style="dim",
         ))
+
+    # Show security settings
+    console.print()
+    sec_table = Table(title="Security Settings", show_header=False)
+    sec_table.add_column("Setting", style="cyan")
+    sec_table.add_column("Value")
+    sec_table.add_row(
+        "Rate Limiting",
+        f"[green]enabled[/] ({config.rate_limit_rpm} req/min)" if config.rate_limit else "[yellow]disabled[/]"
+    )
+    sec_table.add_row(
+        "Peak Hours Warning",
+        "[green]enabled[/]" if config.peak_warning else "[yellow]disabled[/]"
+    )
+    sec_table.add_row(
+        "Audit Logging",
+        "[green]enabled[/]" if config.audit_log else "[yellow]disabled[/]"
+    )
+    sec_table.add_row(
+        "TLS Security",
+        f"[green]{config.tls_level}[/]"
+    )
+
+    # Show current peak hours status
+    peak_info = check_peak_hours()
+    if peak_info.period == DownloadPeriod.PEAK:
+        sec_table.add_row(
+            "Current Period",
+            f"[yellow]Peak Hours[/] ({peak_info.current_hour_cst}:00 CST)"
+        )
+    else:
+        sec_table.add_row(
+            "Current Period",
+            f"[green]Off-Peak[/] ({peak_info.current_hour_cst}:00 CST)"
+        )
+
+    console.print(sec_table)
 
 
 # ============================================================================
@@ -812,6 +925,9 @@ def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, ver
 
     console.print(f"[cyan]Found {len(cases)} cases to download[/]")
 
+    # Show PACER peak hours warning for bulk downloads
+    show_peak_hours_warning(document_count=len(cases), page_count=len(cases) * 5)
+
     # Cost confirmation for batch
     if not confirm_cost_pages(
         ctx,
@@ -1285,6 +1401,10 @@ def pcl_cases(
         console.print("[dim]Remove --dry-run to execute search[/]")
         return
 
+    # Show peak hours warning for bulk operations (all_pages)
+    if all_pages:
+        show_peak_hours_warning(document_count=100, page_count=5400)  # Max possible
+
     try:
         client = PCLClient(config)
 
@@ -1571,6 +1691,10 @@ def pcl_parties(
         console.print("[dim]Estimated cost: $0.10 per page (54 results/page)[/]")
         console.print("[dim]Remove --dry-run to execute search[/]")
         return
+
+    # Show peak hours warning for bulk operations (all_pages)
+    if all_pages:
+        show_peak_hours_warning(document_count=100, page_count=5400)  # Max possible
 
     try:
         client = PCLClient(config)

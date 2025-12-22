@@ -3,6 +3,13 @@
 Downloads dockets from CM/ECF court systems using authenticated requests.
 The PCL API only provides case search - actual docket content must be
 fetched from individual court CM/ECF systems.
+
+Security Features:
+- Rate limiting to prevent server overload
+- Peak hours detection (bulk downloads should be 6PM-6AM CST)
+- Streaming downloads to prevent memory exhaustion
+- TLS 1.2+ enforcement
+- Audit logging of all operations
 """
 
 import re
@@ -18,6 +25,18 @@ from .auth import authenticate, AuthResult
 from .config import PacerConfig
 from .courts import get_cso_court_id, get_ecf_domain_from_url
 from .models import CaseSearchCriteria
+from .security import (
+    check_peak_hours,
+    create_secure_session,
+    get_audit_logger,
+    get_rate_limiter,
+    get_security_config,
+    is_bulk_download,
+    safe_response_content,
+    streaming_download,
+    TLSSecurityLevel,
+    MAX_MEMORY_RESPONSE_SIZE,
+)
 
 
 @dataclass
@@ -130,18 +149,35 @@ def get_document_by_number(case_dir: Path, doc_number: str) -> Optional[dict]:
 
 
 class DocketDownloader:
-    """Downloads dockets from CM/ECF court systems."""
+    """Downloads dockets from CM/ECF court systems.
+
+    Security Features:
+    - Uses TLS 1.2+ with secure cipher suites
+    - Rate limiting to prevent server overload
+    - Connection pooling with limits
+    - Audit logging of all operations
+    """
 
     def __init__(self, config: PacerConfig, verbose: bool = False):
         self.config = config
         self.verbose = verbose
-        self.session = requests.Session()
+        # Use secure session with TLS hardening
+        self.session = create_secure_session(TLSSecurityLevel.STRICT)
         self.token: Optional[str] = None
+        self._rate_limiter = get_rate_limiter()
+        self._audit_logger = get_audit_logger()
 
     def _log(self, msg: str):
         """Print trace message if verbose mode enabled."""
         if self.verbose:
             print(f"[TRACE] {msg}")
+
+    def _apply_rate_limit(self) -> None:
+        """Apply rate limiting before making a request."""
+        wait_time = self._rate_limiter.wait()
+        if wait_time > 0 and self.verbose:
+            self._log(f"Rate limit: waited {wait_time:.2f}s")
+        self._rate_limiter.record_request()
 
     def authenticate(self) -> bool:
         """Authenticate with PACER and get session token."""
@@ -176,6 +212,7 @@ class DocketDownloader:
 
         # First, get the login page to obtain any required tokens (CSRF, etc.)
         try:
+            self._apply_rate_limit()
             resp = self.session.get(cso_url, params={
                 "pscCourtId": court_id,
                 "appurl": app_url,
@@ -208,6 +245,7 @@ class DocketDownloader:
             self._log(f"Login form data keys: {list(form_data.keys())}")
 
             # Submit login form
+            self._apply_rate_limit()
             resp = self.session.post(
                 cso_url,
                 data=form_data,
@@ -253,6 +291,7 @@ class DocketDownloader:
                     "Faces-Request": "partial/ajax",
                 }
 
+                self._apply_rate_limit()
                 resp = self.session.post(
                     cso_url,
                     data=mfa_data,
@@ -269,6 +308,7 @@ class DocketDownloader:
                     if redirect_match:
                         redirect_url = redirect_match.group(1).replace("&amp;", "&")
                         self._log(f"Following MFA redirect to: {redirect_url}")
+                        self._apply_rate_limit()
                         resp = self.session.get(redirect_url, allow_redirects=True, timeout=30)
 
             # Check if we ended up at the target app URL (successful login)
@@ -379,7 +419,9 @@ class DocketDownloader:
 
         # Step 1: Access the query menu - check if we need to authenticate
         self._log("Accessing query menu...")
+        start_time = time.time()
         try:
+            self._apply_rate_limit()
             resp = self.session.get(case_link, headers=headers, timeout=30, allow_redirects=True)
             self._log(f"Query menu response: {resp.status_code}, length: {len(resp.text)}")
 
@@ -414,6 +456,7 @@ class DocketDownloader:
                         )
 
                     # Retry the request after login
+                    self._apply_rate_limit()
                     resp = self.session.get(case_link, headers=headers, timeout=30)
                     self._log(f"After CSO login, response: {resp.status_code}, length: {len(resp.text)}")
 
@@ -448,6 +491,7 @@ class DocketDownloader:
 
         try:
             # First request to DktRpt.pl may return a form to configure report options
+            self._apply_rate_limit()
             resp = self.session.get(docket_url, headers=headers, timeout=30)
             self._log(f"Docket report response: {resp.status_code}, length: {len(resp.text)}")
 
@@ -492,6 +536,7 @@ class DocketDownloader:
                         form_data[name] = value
 
                 self._log(f"Submitting form with {len(form_data)} fields")
+                self._apply_rate_limit()
                 resp = self.session.post(form_url, data=form_data, headers=headers, timeout=60)
                 self._log(f"Form submission response: {resp.status_code}, length: {len(resp.text)}")
 
@@ -538,6 +583,17 @@ class DocketDownloader:
             except Exception as e:
                 self._log(f"Warning: Could not save docs.json: {e}")
 
+            # Log successful download to audit trail
+            duration_ms = int((time.time() - start_time) * 1000)
+            self._audit_logger.log_request(
+                operation="docket_download",
+                url=case_link,
+                method="GET",
+                status_code=resp.status_code,
+                bytes_transferred=len(resp.text),
+                duration_ms=duration_ms,
+            )
+
             return DownloadResult(
                 success=True,
                 filepath=filepath,
@@ -547,6 +603,15 @@ class DocketDownloader:
             )
 
         except requests.RequestException as e:
+            # Log failed download to audit trail
+            duration_ms = int((time.time() - start_time) * 1000)
+            self._audit_logger.log_request(
+                operation="docket_download",
+                url=case_link,
+                method="GET",
+                error=str(e),
+                duration_ms=duration_ms,
+            )
             return DownloadResult(success=False, error=f"Network error: {e}")
 
     def download_docket_by_case_number(
@@ -641,17 +706,33 @@ def download_docket(
 
 
 class DocumentDownloader:
-    """Downloads individual documents from CM/ECF."""
+    """Downloads individual documents from CM/ECF.
+
+    Security Features:
+    - Uses TLS 1.2+ with secure cipher suites
+    - Rate limiting to prevent server overload
+    - Streaming downloads for large PDFs (prevents memory exhaustion)
+    - Audit logging of all operations
+    """
 
     def __init__(self, config: PacerConfig, verbose: bool = False):
         self.config = config
         self.verbose = verbose
         self._docket_dl: Optional[DocketDownloader] = None
         self.authenticated_courts: set[str] = set()
+        self._rate_limiter = get_rate_limiter()
+        self._audit_logger = get_audit_logger()
 
     def _log(self, msg: str):
         if self.verbose:
             print(f"[TRACE] {msg}")
+
+    def _apply_rate_limit(self) -> None:
+        """Apply rate limiting before making a request."""
+        wait_time = self._rate_limiter.wait()
+        if wait_time > 0 and self.verbose:
+            self._log(f"Rate limit: waited {wait_time:.2f}s")
+        self._rate_limiter.record_request()
 
     @property
     def session(self) -> requests.Session:
@@ -698,6 +779,7 @@ class DocumentDownloader:
             "Referer": "https://external",
         }
 
+        self._apply_rate_limit()
         resp = self.session.get(f"{base_url}/cgi-bin/iquery.pl", headers=headers, timeout=30)
 
         # Check for CSO login redirect
@@ -731,6 +813,7 @@ class DocumentDownloader:
             return DownloadResult(success=False, error="Authentication failed")
 
         self._log(f"Downloading document: {doc_url}")
+        start_time = time.time()
 
         headers = {
             "User-Agent": "Mozilla/5.0 (compatible; PACER-CLI/1.0)",
@@ -739,6 +822,7 @@ class DocumentDownloader:
         }
 
         try:
+            self._apply_rate_limit()
             resp = self.session.get(doc_url, headers=headers, timeout=60, allow_redirects=True)
             self._log(f"Response: {resp.status_code}, content-type: {resp.headers.get('content-type', 'unknown')}")
 
@@ -761,6 +845,7 @@ class DocumentDownloader:
                         parsed = urlparse(doc_url)
                         pdf_url = f"{parsed.scheme}://{parsed.netloc}{pdf_url}"
                     self._log(f"Following PDF link: {pdf_url}")
+                    self._apply_rate_limit()
                     resp = self.session.get(pdf_url, headers=headers, timeout=60)
 
                 # Check for iframe with document
@@ -771,6 +856,7 @@ class DocumentDownloader:
                         parsed = urlparse(doc_url)
                         iframe_url = f"{parsed.scheme}://{parsed.netloc}{iframe_url}"
                     self._log(f"Following iframe: {iframe_url}")
+                    self._apply_rate_limit()
                     resp = self.session.get(iframe_url, headers=headers, timeout=60)
 
                 # Check for PACER receipt/acknowledgment page (View Document button)
@@ -801,6 +887,7 @@ class DocumentDownloader:
                         form_url = f"{parsed.scheme}://{parsed.netloc}{path}"
 
                         self._log(f"POSTing to {form_url} with goDLS params: {form_data}")
+                        self._apply_rate_limit()
                         resp = self.session.post(form_url, data=form_data, headers=headers, timeout=120)
                         self._log(f"goDLS POST response: {resp.status_code}, type: {resp.headers.get('content-type', 'unknown')}")
 
@@ -811,6 +898,7 @@ class DocumentDownloader:
                                 pdf_path = iframe_match.group(1)
                                 pdf_url = f"{parsed.scheme}://{parsed.netloc}{pdf_path}"
                                 self._log(f"Following iframe to PDF: {pdf_url}")
+                                self._apply_rate_limit()
                                 resp = self.session.get(pdf_url, headers=headers, timeout=120)
                                 self._log(f"PDF response: {resp.status_code}, type: {resp.headers.get('content-type', 'unknown')}, size: {len(resp.content)}")
 
@@ -829,6 +917,7 @@ class DocumentDownloader:
                             resp.text, re.IGNORECASE
                         )
                         form_data = dict(hidden_fields)
+                        self._apply_rate_limit()
                         resp = self.session.post(form_url, data=form_data, headers=headers, timeout=60)
                         self._log(f"Form submission response: {resp.status_code}")
 
@@ -873,6 +962,17 @@ class DocumentDownloader:
 
             self._log(f"Saved to: {filepath} ({len(resp.content)} bytes)")
 
+            # Log successful download to audit trail
+            duration_ms = int((time.time() - start_time) * 1000)
+            self._audit_logger.log_request(
+                operation="document_download",
+                url=doc_url,
+                method="GET",
+                status_code=resp.status_code,
+                bytes_transferred=len(resp.content),
+                duration_ms=duration_ms,
+            )
+
             # Return success but include warning in error field if applicable
             return DownloadResult(
                 success=True,
@@ -883,4 +983,13 @@ class DocumentDownloader:
             )
 
         except requests.RequestException as e:
+            # Log failed download to audit trail
+            duration_ms = int((time.time() - start_time) * 1000)
+            self._audit_logger.log_request(
+                operation="document_download",
+                url=doc_url,
+                method="GET",
+                error=str(e),
+                duration_ms=duration_ms,
+            )
             return DownloadResult(success=False, error=f"Network error: {e}")
