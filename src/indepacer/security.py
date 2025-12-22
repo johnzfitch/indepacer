@@ -98,16 +98,23 @@ def get_current_cst_hour() -> int:
     Falls back to fixed offset if zoneinfo is unavailable.
     """
     try:
-        from zoneinfo import ZoneInfo
-        central_tz = ZoneInfo(CENTRAL_TZ_NAME)
-        central_now = datetime.now(central_tz)
-        return central_now.hour
-    except (ImportError, Exception):
-        # Fallback: Use fixed UTC-6 offset (CST)
-        # This is approximate and doesn't handle CDT
-        utc_now = datetime.now(timezone.utc)
-        cst_hour = (utc_now.hour - 6) % 24
-        return cst_hour
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        try:
+            central_tz = ZoneInfo(CENTRAL_TZ_NAME)
+            central_now = datetime.now(central_tz)
+            return central_now.hour
+        except ZoneInfoNotFoundError:
+            # Timezone database not available, fall back
+            pass
+    except ImportError:
+        # zoneinfo not available (Python < 3.9), fall back
+        pass
+    
+    # Fallback: Use fixed UTC-6 offset (CST)
+    # This is approximate and doesn't handle CDT
+    utc_now = datetime.now(timezone.utc)
+    cst_hour = (utc_now.hour - 6) % 24
+    return cst_hour
 
 
 def check_peak_hours() -> PeakHoursInfo:
@@ -432,7 +439,9 @@ class StreamingDownload:
         """Close the underlying response to free connection."""
         try:
             self.response.close()
-        except Exception:
+        except (AttributeError, OSError):
+            # AttributeError: response doesn't have close method (shouldn't happen)
+            # OSError: connection already closed or network error
             pass
 
     def iter_content(self) -> Iterator[bytes]:
@@ -540,8 +549,15 @@ def safe_response_content(
         Response content
 
     Raises:
-        ValueError: If response exceeds max_size
+        ValueError: If response exceeds max_size or already consumed
     """
+    # Check if response was already consumed
+    if hasattr(response, '_content') and response._content is not None:
+        raise ValueError(
+            "Response has already been consumed. "
+            "safe_response_content() must be called before accessing response.content or response.text"
+        )
+    
     content_length = response.headers.get("Content-Length")
 
     if content_length and int(content_length) > max_size:
