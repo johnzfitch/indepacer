@@ -248,7 +248,7 @@ def migrate_archive(ctx, dry_run: bool, legacy_dir: Optional[Path]):
       pacer migrate --legacy-dir ./old # Migrate from custom location
     """
     from .parser import parse_docket
-    from .downloader import extract_document_links
+    from .downloader import extract_document_metadata
     
     config: PacerConfig = ctx.obj["config"]
     
@@ -338,19 +338,19 @@ def migrate_archive(ctx, dry_run: bool, legacy_dir: Optional[Path]):
                 
                 # Generate docs.json from the docket
                 try:
-                    docket = parse_docket(html_content)
-                    doc_links = extract_document_links(html_content, docket)
-                    
-                    if doc_links:
-                        import json
+                    import json
+                    # Construct base URL from court ID (e.g., nysd -> https://ecf.nysd.uscourts.gov)
+                    base_url = f"https://ecf.{item['court']}.uscourts.gov"
+
+                    docs_data = extract_document_metadata(
+                        html_content,
+                        base_url,
+                        case_number=item["case"],
+                        court_id=item["court"],
+                    )
+
+                    if docs_data.get("documents"):
                         docs_json = target_dir / "docs.json"
-                        docs_data = {
-                            "case_number": docket.meta.case_number,
-                            "case_title": docket.meta.case_title,
-                            "court": item["court"],
-                            "document_count": len(doc_links),
-                            "documents": doc_links,
-                        }
                         docs_json.write_text(json.dumps(docs_data, indent=2))
                 except Exception:
                     # docs.json generation failed, but docket copy still succeeds
