@@ -32,7 +32,6 @@ from .security import (
     check_peak_hours,
     DownloadPeriod,
     is_bulk_download,
-    format_peak_hours_banner,
 )
 
 console = Console()
