@@ -2,11 +2,11 @@
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 CONFIG_DIR = Path.home() / ".config" / "indepacer"
@@ -50,6 +50,20 @@ class PacerConfig(BaseSettings):
 
     # New hierarchical archive root
     archive_root: Path = ARCHIVE_ROOT
+
+    # Security settings (from PR #1 + PR #2 fixes)
+    rate_limit: bool = True
+    rate_limit_rpm: int = 30
+    peak_warning: bool = True
+    audit_log: bool = True
+    tls_level: Literal["standard", "strict", "paranoid"] = "standard"
+
+    @field_validator("rate_limit_rpm")
+    @classmethod
+    def _validate_rpm(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("rate_limit_rpm must be >= 1 to avoid division by zero")
+        return v
 
     @property
     def auth_url(self) -> str:
@@ -123,7 +137,7 @@ class ContextConfig(BaseModel):
             "court": self.court,
             "case_number": self.case_number,
             "case_path": str(self.case_path) if self.case_path else None,
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         CONTEXT_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
         return CONTEXT_FILE
@@ -213,5 +227,5 @@ def mark_migration_complete() -> None:
     """Mark migration as complete to avoid re-prompting."""
     PACER_ROOT.mkdir(parents=True, exist_ok=True)
     (PACER_ROOT / ".migrated").write_text(
-        datetime.utcnow().isoformat() + "Z", encoding="utf-8"
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), encoding="utf-8"
     )

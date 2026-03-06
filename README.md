@@ -1,4 +1,10 @@
 # ![console](icons/console.png) indepacer
+
+[![CI](https://github.com/johnzfitch/indepacer/actions/workflows/ci.yml/badge.svg)](https://github.com/johnzfitch/indepacer/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Security Hardened](https://img.shields.io/badge/security-hardened-brightgreen.svg)](#security)
+
 ![preview](preview.png)
 
 A CLI for PACER (Public Access to Court Electronic Records) federal court research.
@@ -804,6 +810,32 @@ PACER charges per page viewed:
 
 ---
 
+## Security
+
+indepacer includes a security module (`security.py`) that protects your account and federal court system resources:
+
+- **TLS 1.2+ enforcement** with ECDHE-only cipher suites (no deprecated DHE)
+- **Rate limiting** (30 req/min default, configurable) to stay within PACER guidelines
+- **Peak hours detection** (6AM-6PM Central, DST-aware via `zoneinfo`) with bulk download warnings
+- **Streaming downloads** with memory limits to prevent OOM on large dockets
+- **Audit logging** to `~/.pacer/logs/` for billing reconciliation
+- **Secure credential storage** (file mode `0600`, Pydantic `SecretStr` for passwords)
+- **Automatic retry** with exponential backoff on transient errors (429, 5xx)
+
+Security configuration in `~/.config/indepacer/config.env`:
+
+```bash
+PACER_RATE_LIMIT=true          # Enable rate limiting
+PACER_RATE_LIMIT_RPM=30        # Requests per minute
+PACER_PEAK_WARNING=true        # Warn during PACER business hours
+PACER_AUDIT_LOG=true           # Enable audit trail
+PACER_TLS_LEVEL=standard       # standard | strict | paranoid
+```
+
+To report vulnerabilities, see [SECURITY.md](SECURITY.md).
+
+---
+
 ## Development
 
 ```bash
@@ -812,6 +844,9 @@ pip install -e '.[dev,full]'
 
 # Run tests
 pytest
+
+# Run security review tests
+pytest tests/test_security_review.py -v
 
 # Lint
 ruff check src/
