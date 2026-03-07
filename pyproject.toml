@@ -53,9 +53,6 @@ Repository = "https://github.com/johnzfitch/pacer-cli"
 [tool.hatch.build.targets.wheel]
 packages = ["src/pacer_cli"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/pacer_cli/data" = "pacer_cli/data"
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
