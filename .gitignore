@@ -62,3 +62,7 @@ Thumbs.db
 *.pdf
 pacersdk/
 pyghidra_mcp_projects/
+
+# Generated/lockfiles
+uv.lock
+*.har
