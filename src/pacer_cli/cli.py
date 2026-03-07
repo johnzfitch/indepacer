@@ -418,23 +418,21 @@ def auth():
 
 @auth.command("init")
 @click.option("--qa", is_flag=True, help="Configure for QA environment instead of production")
-@click.option("--no-vault", is_flag=True, help="Skip encrypted vault (use plain config file)")
 @click.pass_context
-def auth_init(ctx, qa: bool, no_vault: bool):
+def auth_init(ctx, qa: bool):
     """Interactive setup wizard for PACER credentials.
 
     \b
     Guides you through:
       1. Username and password
       2. MFA setup (if enabled on your PACER account)
-      3. Encrypted vault setup (recommended)
+      3. Encrypted vault passphrase
       4. Credential verification against PACER servers
 
     \b
     Example:
-      pacer auth init              # Production setup (encrypted by default)
+      pacer auth init              # Production setup
       pacer auth init --qa         # QA environment setup
-      pacer auth init --no-vault   # Skip encryption (not recommended)
     """
     from rich.prompt import Confirm, Prompt
 
@@ -486,31 +484,21 @@ def auth_init(ctx, qa: bool, no_vault: bool):
                     totp_secret = None
                     break
 
-    # Step 3: Vault encryption (default: enabled)
-    passphrase = None
-    if no_vault:
-        console.print("\n[bold cyan]Step 3:[/] Storage\n")
-        console.print("  [yellow]Skipping encryption (--no-vault specified)[/]")
-        console.print("  [dim]Credentials will be stored in plain text at ~/.config/pacer-cli/config.env[/]")
-    else:
-        console.print("\n[bold cyan]Step 3:[/] Encrypted Storage (Recommended)\n")
-        console.print("  [dim]Your credentials will be encrypted with AES-256-GCM.[/]")
-        console.print("  [dim]You'll need this passphrase when using pacer.[/]\n")
+    # Step 3: Vault encryption (always enabled)
+    console.print("\n[bold cyan]Step 3:[/] Encrypted Storage\n")
+    console.print("  [dim]Your credentials will be encrypted with AES-256-GCM.[/]")
+    console.print("  [dim]You'll need this passphrase each time you use pacer.[/]\n")
 
-        use_vault = Confirm.ask("  Enable encrypted vault?", default=True)
-        if use_vault:
-            while True:
-                passphrase = Prompt.ask("  Vault passphrase (min 8 chars)", password=True)
-                if len(passphrase) < 8:
-                    console.print("  [red]Passphrase must be at least 8 characters.[/]")
-                    continue
-                confirm = Prompt.ask("  Confirm passphrase", password=True)
-                if passphrase != confirm:
-                    console.print("  [red]Passphrases don't match.[/]")
-                    continue
-                break
-        else:
-            console.print("  [yellow]Credentials will be stored in plain text.[/]")
+    while True:
+        passphrase = Prompt.ask("  Vault passphrase (min 8 chars)", password=True)
+        if len(passphrase) < 8:
+            console.print("  [red]Passphrase must be at least 8 characters.[/]")
+            continue
+        confirm = Prompt.ask("  Confirm passphrase", password=True)
+        if passphrase != confirm:
+            console.print("  [red]Passphrases don't match.[/]")
+            continue
+        break
 
     # Step 4: Test connection
     console.print("\n[bold cyan]Step 4:[/] Verifying credentials with PACER...\n")
@@ -547,8 +535,7 @@ def auth_init(ctx, qa: bool, no_vault: bool):
             client_code=None,
             vault_passphrase=passphrase,
         )
-        storage_type = "encrypted vault" if passphrase else "config file"
-        console.print(f"  [green]Saved to {storage_type}:[/] {config_path}")
+        console.print(f"  [green]Saved to encrypted vault:[/] {config_path}")
         console.print("  [dim]File permissions: 600 (owner read/write only)[/]")
     except Exception as e:
         console.print(f"  [red]Failed to save:[/] {e}")
@@ -560,7 +547,7 @@ def auth_init(ctx, qa: bool, no_vault: bool):
         f"  Environment: {env_name}\n"
         f"  Username: {username}\n"
         f"  MFA: {'Configured' if totp_secret else 'Not configured'}\n"
-        f"  Storage: {'Encrypted vault' if passphrase else 'Plain config file'}\n\n"
+        f"  Storage: Encrypted vault\n\n"
         f"[dim]Try: pacer pcl cases -t \"test\" to search cases[/]",
         title="Success",
         border_style="green",
@@ -610,8 +597,24 @@ def auth_login(ctx, username: Optional[str], password: Optional[str], totp_secre
     if password is None:
         password = Prompt.ask("PACER Password", password=True)
 
-    config_path = save_credentials(username, password, totp_secret, client_code)
-    console.print(f"[green]Credentials saved to:[/] {config_path}")
+    # Vault passphrase is required — prompt to unlock existing or create new
+    if vault_exists():
+        passphrase = Prompt.ask("Vault passphrase", password=True)
+    else:
+        console.print("\n[dim]Setting up encrypted vault for credential storage.[/]")
+        while True:
+            passphrase = Prompt.ask("Vault passphrase (min 8 chars)", password=True)
+            if len(passphrase) < 8:
+                console.print("[red]Passphrase must be at least 8 characters.[/]")
+                continue
+            confirm = Prompt.ask("Confirm passphrase", password=True)
+            if passphrase != confirm:
+                console.print("[red]Passphrases don't match.[/]")
+                continue
+            break
+
+    config_path = save_credentials(username, password, totp_secret, client_code, vault_passphrase=passphrase)
+    console.print(f"[green]Credentials saved to encrypted vault:[/] {config_path}")
     console.print("[dim]File permissions set to 600 (owner read/write only)[/]")
 
     if totp_secret:

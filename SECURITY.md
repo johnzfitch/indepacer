@@ -21,6 +21,7 @@ We will respond within 48 hours and aim to publish a fix within 7 days for criti
 
 This project implements the following security measures:
 
+- **Encrypted credential vault** — Credentials are encrypted at rest using AES-256-GCM with a passphrase-derived key (Scrypt KDF, N=16384, r=8, p=1). The vault is created during `pacer auth init` and stored at `~/.pacer/vault.json` with `0600` permissions. Each secret is encrypted with a unique nonce, and atomic file writes prevent partial-write corruption. Vault encryption is always active — credentials never touch disk in plaintext.
 - **TLS 1.2+ enforcement** — All connections to PACER use TLS 1.2 or higher with ECDHE-only cipher suites
 - **Credential protection** — Passwords stored using Pydantic `SecretStr`, config files created with `0600` permissions
 - **Rate limiting** — Configurable request throttling (default 30 RPM) to protect federal court systems

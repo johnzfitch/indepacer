@@ -21,7 +21,7 @@ pip install 'pacer-cli[full]'
 ## ![checkbox](icons/checkbox.png) Quick Start
 
 ```bash
-# 1. Configure credentials (interactive wizard — sets up vault encryption by default)
+# 1. Configure credentials (interactive wizard — sets up encrypted vault)
 pacer auth init
 
 # 2. Search for cases (costs $0.10/page)
@@ -94,35 +94,31 @@ pacer -y download docket 1:18-cv-08434 nysd   # no prompt
 
 ### pacer auth init
 
-Interactive setup wizard. **Start here.** Guides through credentials, MFA validation, encrypted vault setup, and a live authentication test against PACER.
+Interactive setup wizard. **Start here.** Guides through credentials, MFA validation, encrypted vault passphrase, and a live authentication test against PACER.
 
 ```
 pacer auth init [OPTIONS]
 
 Options:
   --qa        Configure for QA environment instead of production
-  --no-vault  Skip encrypted vault (store credentials in plain text)
 ```
 
 **Steps performed:**
 1. Enter username and password
 2. Optionally configure MFA (validates the TOTP secret by generating a live code)
-3. Set up encrypted vault (AES-256-GCM, enabled by default)
+3. Set vault passphrase (AES-256-GCM encryption, always active)
 4. Test credentials against PACER servers before saving
 
 **Examples:**
 ```bash
-# Standard first-time setup (encrypted vault recommended)
+# Standard first-time setup
 pacer auth init
 
 # QA environment setup
 pacer auth init --qa
-
-# Plain text storage (not recommended)
-pacer auth init --no-vault
 ```
 
-Credentials are saved to `~/.pacer/vault.json` (encrypted) or `~/.config/pacer-cli/config.env` (plain).
+Credentials are always saved encrypted to `~/.pacer/vault.json`.
 
 ---
 
@@ -768,26 +764,13 @@ Shows: username, password status, output directories.
 
 ### Credentials
 
-**Encrypted vault (recommended)** — created by `pacer auth init`:
+All credentials are stored in an encrypted vault created by `pacer auth init`:
 
 ```
 ~/.pacer/vault.json   # AES-256-GCM encrypted, Scrypt KDF
 ```
 
-The vault passphrase is prompted at startup when a vault is present. To bypass encryption, use `pacer auth init --no-vault` or set credentials directly in the config file.
-
-**Plain config file** (fallback):
-
-```
-~/.config/pacer-cli/config.env   # mode 0600
-```
-
-```env
-PACER_USERNAME=myuser
-PACER_PASSWORD=mypassword
-PACER_TOTP_SECRET=JBSWY3DPEHPK3PXP
-PACER_CLIENT_CODE=MYCLIENT
-```
+The vault passphrase is prompted once per CLI session.
 
 ### Environment Variables
 
@@ -805,6 +788,7 @@ Cases are stored in a hierarchical structure:
 
 ```
 ~/.pacer/
+├── vault.json                 # Encrypted credentials (AES-256-GCM)
 ├── config/
 │   └── context.json           # Active case context
 └── archives/
@@ -816,8 +800,6 @@ Cases are stored in a hierarchical structure:
                 ├── 001.pdf
                 └── 001-1.pdf  # Attachment
 ```
-
-Credentials are stored separately in `~/.config/pacer-cli/config.env`.
 
 ---
 
@@ -903,6 +885,7 @@ PACER charges per page viewed:
 
 pacer-cli includes a security module (`security.py`) that protects your account and federal court system resources:
 
+- **Encrypted credential vault** — AES-256-GCM encryption with Scrypt key derivation (see below)
 - **TLS 1.2+ enforcement** with ECDHE-only cipher suites (no deprecated DHE)
 - **Rate limiting** (30 req/min default, configurable) to stay within PACER guidelines
 - **Peak hours detection** (6AM-6PM Central, DST-aware via `zoneinfo`) with bulk download warnings
@@ -910,6 +893,47 @@ pacer-cli includes a security module (`security.py`) that protects your account 
 - **Audit logging** to `~/.pacer/logs/` for billing reconciliation
 - **Secure credential storage** (file mode `0600`, Pydantic `SecretStr` for passwords)
 - **Automatic retry** with exponential backoff on transient errors (429, 5xx)
+
+### Encrypted Vault
+
+`pacer auth init` creates an encrypted vault at `~/.pacer/vault.json`. All credentials are always encrypted at rest using:
+
+- **AES-256-GCM** authenticated encryption (each secret gets a unique 96-bit nonce)
+- **Scrypt** memory-hard key derivation (N=16384, r=8, p=1) from your passphrase
+- **32-byte random salt** per vault, regenerated on passphrase change
+- **Atomic writes** with `0600` permissions to prevent partial-write corruption
+
+The vault passphrase is prompted once per CLI session. Credentials never touch disk in plaintext.
+
+```
+~/.pacer/vault.json
+├── version    # Schema version (currently 1)
+├── salt       # Base64-encoded 32-byte Scrypt salt
+├── check      # Encrypted canary value for passphrase verification
+├── kdf        # Scrypt parameters (n, r, p, key_size)
+└── secrets    # Each credential individually encrypted
+    ├── PACER_USERNAME   → {nonce, ciphertext}
+    ├── PACER_PASSWORD   → {nonce, ciphertext}
+    └── PACER_TOTP_SECRET → {nonce, ciphertext}
+```
+
+**Vault operations:**
+
+| Action | Command |
+|--------|---------|
+| Create vault | `pacer auth init` |
+| Change passphrase | Re-run `pacer auth init` (re-encrypts all secrets) |
+| Check vault status | `pacer auth status` |
+
+**Scrypt tuning** (optional, via environment variables):
+
+```bash
+PACER_VAULT_SCRYPT_N=16384   # CPU/memory cost (must be power of 2)
+PACER_VAULT_SCRYPT_R=8       # Block size
+PACER_VAULT_SCRYPT_P=1       # Parallelization factor
+```
+
+### Network Security
 
 Security configuration in `~/.config/pacer-cli/config.env`:
 

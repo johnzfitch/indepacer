@@ -181,17 +181,17 @@ def save_credentials(
     client_code: Optional[str] = None,
     vault_passphrase: Optional[str] = None,
 ) -> Path:
-    """Save PACER credentials to encrypted vault (or legacy plaintext).
+    """Save PACER credentials to encrypted vault.
 
     Args:
         username: PACER username
         password: PACER password
         totp_secret: Base32-encoded TOTP secret from MFA setup (optional)
         client_code: Client billing code (optional)
-        vault_passphrase: If provided, store in encrypted vault instead of plaintext
+        vault_passphrase: Passphrase for vault encryption
 
     Returns:
-        Path to config file (vault or legacy)
+        Path to vault file
     """
     if vault_passphrase:
         return _save_credentials_vault(username, password, totp_secret, client_code, vault_passphrase)
