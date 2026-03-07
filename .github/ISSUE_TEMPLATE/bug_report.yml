@@ -1,0 +1,89 @@
+name: Bug Report
+description: Something isn't working correctly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out as much as you can — PACER issues can be environment-specific.
+
+  - type: input
+    id: version
+    attributes:
+      label: pacer-cli version
+      placeholder: "e.g. 0.2.1  (run: pacer --version)"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "e.g. 3.12.2  (run: python --version)"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "e.g. macOS 14.4, Ubuntu 24.04, Windows 11"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: command
+    attributes:
+      label: Which command failed?
+      options:
+        - pacer auth init / login
+        - pacer auth code / setup-mfa / test
+        - pacer download docket
+        - pacer download document
+        - pacer download batch
+        - pacer pcl cases
+        - pacer pcl parties
+        - pacer pcl batch
+        - pacer view / parse
+        - pacer search
+        - Other / multiple
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include the full command you ran and the exact error output.
+      placeholder: |
+        Command: pacer download docket 1:18-cv-08434 nysd
+        Error: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: PACER environment
+      options:
+        - Production
+        - QA (--qa flag)
+        - Unknown
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I ran `pacer auth test` and it succeeded (or this is the bug)
+        - label: I am not including real PACER credentials in this report
+          required: true

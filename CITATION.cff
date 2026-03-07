@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use pacer-cli in academic or legal research, please cite it as below."
+type: software
+title: pacer-cli
+abstract: >
+  A command-line interface for the U.S. federal court PACER system.
+  Supports case search via the PCL REST API, docket and document
+  downloads from CM/ECF, local archive management, and structured
+  docket parsing for legal research workflows.
+authors:
+  - family-names: Fitch
+    given-names: Zack
+    alias: johnzfitch
+version: "0.2.1"
+date-released: "2026-03-07"
+license: MIT
+repository-code: https://github.com/johnzfitch/pacer-cli
+url: https://pypi.org/project/pacer-cli/
+keywords:
+  - PACER
+  - federal courts
+  - legal research
+  - docket
+  - CM/ECF
+  - PCL
+  - court records
+  - litigation
+  - legal technology

@@ -1,0 +1,59 @@
+name: Feature Request
+description: Suggest a new command, option, or behavior
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a request, check the [ROADMAP](../../blob/master/ROADMAP.md) to see if it's already planned.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the research workflow or use case that's currently difficult or impossible.
+      placeholder: "When I'm doing bulk docket research, I have to manually..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like the command or feature to look like?
+      placeholder: |
+        pacer download batch cases.csv --parallel 4
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Authentication / credentials
+        - Docket / document download
+        - PCL case search
+        - PCL party search
+        - Docket parsing / view
+        - Local archive / search
+        - Output formats (CSV, JSON, etc.)
+        - Performance / parallelism
+        - Security
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds you've tried, or other tools that do something similar.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked the ROADMAP and this isn't already planned
+        - label: This doesn't require changes to PACER's own systems

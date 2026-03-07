@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: PACER Account Help
+    url: https://pacer.uscourts.gov/help
+    about: Issues logging into PACER itself (not the CLI) — contact PACER support directly.
+  - name: Security Vulnerability
+    url: https://github.com/johnzfitch/pacer-cli/security/advisories/new
+    about: Report a security vulnerability privately.
