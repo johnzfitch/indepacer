@@ -14,6 +14,7 @@ CONFIG_FILE = CONFIG_DIR / "config.env"
 
 # New hierarchical archive structure
 PACER_ROOT = Path.home() / ".pacer"
+VAULT_FILE = PACER_ROOT / "vault.json"
 ARCHIVE_ROOT = PACER_ROOT / "archives"
 CONTEXT_FILE = PACER_ROOT / "config" / "context.json"
 
@@ -38,7 +39,8 @@ class PacerConfig(BaseSettings):
 
     username: Optional[str] = None
     password: Optional[SecretStr] = None
-    totp_secret: Optional[SecretStr] = None  # Base32-encoded TOTP secret for MFA
+    totp_secret: Optional[SecretStr] = None  # Base32-encoded TOTP secret for MFA (production)
+    qa_totp_secret: Optional[SecretStr] = None  # Base32-encoded TOTP secret for QA environment
     client_code: Optional[str] = None  # Optional client code for billing
     use_qa: bool = False  # Use QA environment instead of production
 
@@ -77,8 +79,15 @@ class PacerConfig(BaseSettings):
 
     @property
     def has_mfa(self) -> bool:
-        """Check if MFA is configured."""
-        return self.totp_secret is not None
+        """Check if MFA is configured for the active environment."""
+        return self.active_totp_secret is not None
+
+    @property
+    def active_totp_secret(self) -> Optional[SecretStr]:
+        """Get TOTP secret for current environment (QA or production)."""
+        if self.use_qa:
+            return self.qa_totp_secret
+        return self.totp_secret
 
     def get_case_dir(self, court: str, case_number: str) -> Path:
         """Get case directory path in hierarchical archive.
@@ -167,15 +176,32 @@ def save_credentials(
     password: str,
     totp_secret: Optional[str] = None,
     client_code: Optional[str] = None,
+    vault_passphrase: Optional[str] = None,
 ) -> Path:
-    """Save PACER credentials to config file.
+    """Save PACER credentials to encrypted vault (or legacy plaintext).
 
     Args:
         username: PACER username
         password: PACER password
         totp_secret: Base32-encoded TOTP secret from MFA setup (optional)
         client_code: Client billing code (optional)
+        vault_passphrase: If provided, store in encrypted vault instead of plaintext
+
+    Returns:
+        Path to config file (vault or legacy)
     """
+    if vault_passphrase:
+        return _save_credentials_vault(username, password, totp_secret, client_code, vault_passphrase)
+    return _save_credentials_legacy(username, password, totp_secret, client_code)
+
+
+def _save_credentials_legacy(
+    username: str,
+    password: str,
+    totp_secret: Optional[str] = None,
+    client_code: Optional[str] = None,
+) -> Path:
+    """Save credentials to plaintext config.env (legacy mode)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
     with open(CONFIG_FILE, "w") as f:
@@ -190,12 +216,93 @@ def save_credentials(
     return CONFIG_FILE
 
 
-def clear_credentials() -> bool:
-    """Remove stored credentials."""
+def _save_credentials_vault(
+    username: str,
+    password: str,
+    totp_secret: Optional[str] = None,
+    client_code: Optional[str] = None,
+    passphrase: str = "",
+) -> Path:
+    """Save credentials to encrypted vault."""
+    from .vault import PacerVault
+
+    vault = PacerVault(path=VAULT_FILE)
+
+    if vault.exists:
+        vault.unlock(passphrase)
+    else:
+        vault.init(passphrase)
+
+    vault.set("PACER_USERNAME", username)
+    vault.set("PACER_PASSWORD", password)
+    if totp_secret:
+        vault.set("PACER_TOTP_SECRET", totp_secret)
+    if client_code:
+        vault.set("PACER_CLIENT_CODE", client_code)
+
+    vault.save()
+
+    # Remove legacy plaintext file if it exists
     if CONFIG_FILE.exists():
         CONFIG_FILE.unlink()
-        return True
-    return False
+
+    return VAULT_FILE
+
+
+def vault_exists() -> bool:
+    """Check if encrypted vault exists."""
+    return VAULT_FILE.exists()
+
+
+def get_config_from_vault(passphrase: str) -> PacerConfig:
+    """Load configuration from encrypted vault.
+
+    Args:
+        passphrase: Vault passphrase
+
+    Returns:
+        PacerConfig with credentials from vault
+    """
+    from .vault import PacerVault
+
+    vault = PacerVault(path=VAULT_FILE)
+    vault.unlock(passphrase)
+
+    # Set env vars temporarily so PacerConfig picks them up
+    env_backup = {}
+    vault_keys = ["PACER_USERNAME", "PACER_PASSWORD", "PACER_TOTP_SECRET", "PACER_CLIENT_CODE"]
+
+    for key in vault_keys:
+        env_backup[key] = os.environ.get(key)
+        value = vault.get(key)
+        if value:
+            os.environ[key] = value
+        elif key in os.environ:
+            del os.environ[key]
+
+    try:
+        config = PacerConfig()
+    finally:
+        # Restore original env
+        for key, value in env_backup.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    return config
+
+
+def clear_credentials() -> bool:
+    """Remove stored credentials (both vault and legacy)."""
+    cleared = False
+    if CONFIG_FILE.exists():
+        CONFIG_FILE.unlink()
+        cleared = True
+    if VAULT_FILE.exists():
+        VAULT_FILE.unlink()
+        cleared = True
+    return cleared
 
 
 def ensure_dirs(config: PacerConfig) -> None:

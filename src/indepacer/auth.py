@@ -35,15 +35,8 @@ def generate_totp(secret: str) -> str:
     Returns:
         6-digit TOTP code as string
     """
-    try:
-        import pyotp
-    except ImportError:
-        raise ImportError(
-            "pyotp is required for MFA support. Install with: pip install pyotp"
-        )
-
-    totp = pyotp.TOTP(secret)
-    return totp.now()
+    from .otp import totp
+    return totp(secret)
 
 
 def authenticate(
@@ -74,8 +67,8 @@ def authenticate(
     # Add OTP code if MFA is configured or provided
     if otp_code:
         payload["otpCode"] = otp_code
-    elif config.has_mfa and config.totp_secret:
-        payload["otpCode"] = generate_totp(config.totp_secret.get_secret_value())
+    elif config.has_mfa and config.active_totp_secret:
+        payload["otpCode"] = generate_totp(config.active_totp_secret.get_secret_value())
 
     # Add optional client code
     if config.client_code:
