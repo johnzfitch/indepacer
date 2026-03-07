@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from indepacer.docket_types import DocketEntry, ParsedDocket
-from indepacer.parser import (
+from pacer_cli.docket_types import DocketEntry, ParsedDocket
+from pacer_cli.parser import (
     parse_docket,
     parse_docket_file,
     parse_docket_regex,

@@ -491,7 +491,7 @@ def auth_init(ctx, qa: bool, no_vault: bool):
     if no_vault:
         console.print("\n[bold cyan]Step 3:[/] Storage\n")
         console.print("  [yellow]Skipping encryption (--no-vault specified)[/]")
-        console.print("  [dim]Credentials will be stored in plain text at ~/.config/indepacer/config.env[/]")
+        console.print("  [dim]Credentials will be stored in plain text at ~/.config/pacer-cli/config.env[/]")
     else:
         console.print("\n[bold cyan]Step 3:[/] Encrypted Storage (Recommended)\n")
         console.print("  [dim]Your credentials will be encrypted with AES-256-GCM.[/]")

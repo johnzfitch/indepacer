@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-SRC_DIR = Path(__file__).parent.parent / "src" / "indepacer"
+SRC_DIR = Path(__file__).parent.parent / "src" / "pacer_cli"
 PY_FILES = list(SRC_DIR.glob("*.py"))
 
 
@@ -222,7 +222,7 @@ class TestRateLimitingReview:
 
     def test_default_rpm_reasonable(self):
         """Default rate should be <= 60 RPM to be respectful of PACER."""
-        from indepacer.security import DEFAULT_RATE_LIMIT_RPM
+        from pacer_cli.security import DEFAULT_RATE_LIMIT_RPM
         assert DEFAULT_RATE_LIMIT_RPM <= 60
 
     def test_rate_limit_configurable(self):

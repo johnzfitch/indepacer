@@ -9,7 +9,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-CONFIG_DIR = Path.home() / ".config" / "indepacer"
+CONFIG_DIR = Path.home() / ".config" / "pacer-cli"
 CONFIG_FILE = CONFIG_DIR / "config.env"
 
 # New hierarchical archive structure

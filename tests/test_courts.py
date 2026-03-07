@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from indepacer.courts import (
+from pacer_cli.courts import (
     get_cso_court_id,
     get_ecf_domain_from_url,
     get_ecf_url,

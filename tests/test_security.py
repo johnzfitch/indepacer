@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from indepacer.security import (
+from pacer_cli.security import (
     BULK_DOWNLOAD_THRESHOLD,
     DEFAULT_RATE_LIMIT_RPM,
     MAX_MEMORY_RESPONSE_SIZE,
@@ -52,25 +52,25 @@ class TestTimezoneHandling:
         result = is_peak_hours()
         assert isinstance(result, bool)
 
-    @patch("indepacer.security._now_cst")
+    @patch("pacer_cli.security._now_cst")
     def test_peak_during_business_hours(self, mock_now):
         from zoneinfo import ZoneInfo
         mock_now.return_value = datetime(2025, 7, 15, 12, 0, tzinfo=ZoneInfo("America/Chicago"))
         assert is_peak_hours() is True
 
-    @patch("indepacer.security._now_cst")
+    @patch("pacer_cli.security._now_cst")
     def test_not_peak_at_night(self, mock_now):
         from zoneinfo import ZoneInfo
         mock_now.return_value = datetime(2025, 7, 15, 22, 0, tzinfo=ZoneInfo("America/Chicago"))
         assert is_peak_hours() is False
 
-    @patch("indepacer.security._now_cst")
+    @patch("pacer_cli.security._now_cst")
     def test_peak_boundary_start(self, mock_now):
         from zoneinfo import ZoneInfo
         mock_now.return_value = datetime(2025, 1, 15, 6, 0, tzinfo=ZoneInfo("America/Chicago"))
         assert is_peak_hours() is True
 
-    @patch("indepacer.security._now_cst")
+    @patch("pacer_cli.security._now_cst")
     def test_peak_boundary_end(self, mock_now):
         from zoneinfo import ZoneInfo
         mock_now.return_value = datetime(2025, 1, 15, 18, 0, tzinfo=ZoneInfo("America/Chicago"))
@@ -152,14 +152,14 @@ class TestSecurityConfig:
 
     def test_rate_limit_rpm_zero_raises(self):
         from pydantic import ValidationError
-        from indepacer.config import PacerConfig
+        from pacer_cli.config import PacerConfig
 
         with pytest.raises(ValidationError):
             PacerConfig(rate_limit_rpm=0)
 
     def test_tls_level_literal_validation(self):
         from pydantic import ValidationError
-        from indepacer.config import PacerConfig
+        from pacer_cli.config import PacerConfig
 
         with pytest.raises(ValidationError):
             PacerConfig(tls_level="invalid")  # type: ignore[arg-type]
@@ -243,14 +243,14 @@ class TestRateLimiter:
 # =========================================================================
 
 class TestPeakHoursWarning:
-    @patch("indepacer.security._now_cst")
+    @patch("pacer_cli.security._now_cst")
     def test_returns_none(self, mock_now):
         from zoneinfo import ZoneInfo
         mock_now.return_value = datetime(2025, 7, 15, 12, 0, tzinfo=ZoneInfo("America/Chicago"))
         result = show_peak_hours_warning(entry_count=200)
         assert result is None
 
-    @patch("indepacer.security._now_cst")
+    @patch("pacer_cli.security._now_cst")
     def test_no_warning_off_peak(self, mock_now):
         from zoneinfo import ZoneInfo
         mock_now.return_value = datetime(2025, 7, 15, 23, 0, tzinfo=ZoneInfo("America/Chicago"))

@@ -1,4 +1,4 @@
-# indepacer Roadmap
+# pacer-cli Roadmap
 
 ## v0.2.0 - UX Redesign (Complete)
 

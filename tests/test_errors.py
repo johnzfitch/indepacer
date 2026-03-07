@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from indepacer.errors import (
+from pacer_cli.errors import (
     ERRORS,
     classify_download_error,
     classify_pcl_error,
@@ -48,22 +48,22 @@ class TestClassifyDownloadError:
 
 class TestClassifyPclError:
     def test_auth_error(self):
-        from indepacer.pcl import PCLAuthError
+        from pacer_cli.pcl import PCLAuthError
         key, _ = classify_pcl_error(PCLAuthError("bad token"))
         assert key == "auth_failed"
 
     def test_mfa_error(self):
-        from indepacer.pcl import PCLAuthError
+        from pacer_cli.pcl import PCLAuthError
         key, _ = classify_pcl_error(PCLAuthError("MFA required"))
         assert key == "mfa_required"
 
     def test_validation_error(self):
-        from indepacer.pcl import PCLValidationError
+        from pacer_cli.pcl import PCLValidationError
         key, _ = classify_pcl_error(PCLValidationError("bad params"))
         assert key == "pcl_validation"
 
     def test_not_found_error(self):
-        from indepacer.pcl import PCLNotFoundError
+        from pacer_cli.pcl import PCLNotFoundError
         key, _ = classify_pcl_error(PCLNotFoundError("no case"))
         assert key == "case_not_found"
 

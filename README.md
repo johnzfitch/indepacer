@@ -1,6 +1,7 @@
-# ![console](icons/console.png) indepacer
+# ![console](icons/console.png) pacer-cli
 
-[![CI](https://github.com/johnzfitch/indepacer/actions/workflows/ci.yml/badge.svg)](https://github.com/johnzfitch/indepacer/actions/workflows/ci.yml)
+[![CI](https://github.com/johnzfitch/pacer-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/johnzfitch/pacer-cli/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/pacer-cli.svg)](https://pypi.org/project/pacer-cli/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Security Hardened](https://img.shields.io/badge/security-hardened-brightgreen.svg)](#security)
@@ -11,10 +12,10 @@ A CLI for PACER (Public Access to Court Electronic Records) federal court resear
 
 ## ![download](icons/download.png) Installation
 ```bash
-pip install indepacer
+pip install pacer-cli
 
 # With full parsing support (BeautifulSoup for legacy formats)
-pip install 'indepacer[full]'
+pip install 'pacer-cli[full]'
 ```
 
 ## ![checkbox](icons/checkbox.png) Quick Start
@@ -691,7 +692,7 @@ Shows: username, password status, output directories.
 
 ### Credentials
 
-Stored in `~/.config/indepacer/config.env` (mode 600):
+Stored in `~/.config/pacer-cli/config.env` (mode 600):
 
 ```env
 PACER_USERNAME=myuser
@@ -728,7 +729,7 @@ Cases are stored in a hierarchical structure:
                 └── 001-1.pdf  # Attachment
 ```
 
-Credentials are stored separately in `~/.config/indepacer/config.env`.
+Credentials are stored separately in `~/.config/pacer-cli/config.env`.
 
 ---
 
@@ -762,9 +763,9 @@ pacer auth test --otp 123456
 ## ![console](icons/console.png) Python API
 
 ```python
-from indepacer.parser import parse_docket, parse_docket_file
-from indepacer.reader import DocketParser
-from indepacer.docket_types import ParsedDocket
+from pacer_cli.parser import parse_docket, parse_docket_file
+from pacer_cli.reader import DocketParser
+from pacer_cli.docket_types import ParsedDocket
 from pathlib import Path
 
 # Fast parsing
@@ -812,7 +813,7 @@ PACER charges per page viewed:
 
 ## Security
 
-indepacer includes a security module (`security.py`) that protects your account and federal court system resources:
+pacer-cli includes a security module (`security.py`) that protects your account and federal court system resources:
 
 - **TLS 1.2+ enforcement** with ECDHE-only cipher suites (no deprecated DHE)
 - **Rate limiting** (30 req/min default, configurable) to stay within PACER guidelines
@@ -822,7 +823,7 @@ indepacer includes a security module (`security.py`) that protects your account 
 - **Secure credential storage** (file mode `0600`, Pydantic `SecretStr` for passwords)
 - **Automatic retry** with exponential backoff on transient errors (429, 5xx)
 
-Security configuration in `~/.config/indepacer/config.env`:
+Security configuration in `~/.config/pacer-cli/config.env`:
 
 ```bash
 PACER_RATE_LIMIT=true          # Enable rate limiting

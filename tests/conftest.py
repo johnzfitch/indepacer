@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from indepacer.config import PacerConfig
-from indepacer.docket_types import DocketEntry, DocketMeta, ParsedDocket, Party
+from pacer_cli.config import PacerConfig
+from pacer_cli.docket_types import DocketEntry, DocketMeta, ParsedDocket, Party
 
 
 # ---------------------------------------------------------------------------
@@ -23,11 +23,11 @@ def _clean_env(monkeypatch, tmp_path):
     """Ensure tests don't touch real PACER config or home directory."""
     monkeypatch.setenv("HOME", str(tmp_path))
     # Patch module-level Path constants computed at import time (before HOME was set)
-    import indepacer.config as _cfg
-    monkeypatch.setattr(_cfg, "CONFIG_DIR", tmp_path / ".config" / "indepacer")
+    import pacer_cli.config as _cfg
+    monkeypatch.setattr(_cfg, "CONFIG_DIR", tmp_path / ".config" / "pacer-cli")
     monkeypatch.setattr(_cfg, "PACER_ROOT", tmp_path / ".pacer")
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", tmp_path / ".config" / "indepacer" / "config.env")
-    monkeypatch.setattr(_cfg, "CONTEXT_FILE", tmp_path / ".config" / "indepacer" / "context.json")
+    monkeypatch.setattr(_cfg, "CONFIG_FILE", tmp_path / ".config" / "pacer-cli" / "config.env")
+    monkeypatch.setattr(_cfg, "CONTEXT_FILE", tmp_path / ".config" / "pacer-cli" / "context.json")
     # Clear any PACER_ env vars that could leak into PacerConfig
     for key in list(os.environ):
         if key.startswith("PACER_"):
@@ -37,7 +37,7 @@ def _clean_env(monkeypatch, tmp_path):
 @pytest.fixture(autouse=True)
 def _reset_security_globals():
     """Reset module-level singletons between tests."""
-    from indepacer.security import reset_audit_logger, reset_rate_limiter
+    from pacer_cli.security import reset_audit_logger, reset_rate_limiter
 
     reset_rate_limiter()
     reset_audit_logger()

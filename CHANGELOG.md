@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-03-07
 
+### Changed
+
+- **Package renamed** from `indepacer` to `pacer-cli` for clarity
+- Config directory changed from `~/.config/indepacer/` to `~/.config/pacer-cli/`
+
 ### Added
 
 - **Auth init wizard** (`pacer auth init`) - Interactive setup with MFA validation, encrypted vault, and credential testing

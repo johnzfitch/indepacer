@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from indepacer.config import (
+from pacer_cli.config import (
     ContextConfig,
     PacerConfig,
     save_credentials,
@@ -78,7 +78,7 @@ class TestContextConfig:
         assert ctx.is_set is False
 
     def test_save_and_load_roundtrip(self, tmp_path, monkeypatch):
-        from indepacer.config import CONTEXT_FILE
+        from pacer_cli.config import CONTEXT_FILE
 
         ctx = ContextConfig(court="nysd", case_number="1:18-cv-08434")
         path = ctx.save()
@@ -97,13 +97,13 @@ class TestContextConfig:
 
 class TestCredentials:
     def test_save_and_clear(self, tmp_path, monkeypatch):
-        from indepacer.config import CONFIG_DIR, CONFIG_FILE
+        from pacer_cli.config import CONFIG_DIR, CONFIG_FILE
 
         # Patch CONFIG_DIR/CONFIG_FILE so they point to tmp
-        config_dir = tmp_path / ".config" / "indepacer"
+        config_dir = tmp_path / ".config" / "pacer-cli"
         config_file = config_dir / "config.env"
-        monkeypatch.setattr("indepacer.config.CONFIG_DIR", config_dir)
-        monkeypatch.setattr("indepacer.config.CONFIG_FILE", config_file)
+        monkeypatch.setattr("pacer_cli.config.CONFIG_DIR", config_dir)
+        monkeypatch.setattr("pacer_cli.config.CONFIG_FILE", config_file)
 
         path = save_credentials("user", "pass", totp_secret="SECRET")
         assert path.exists()
@@ -117,5 +117,5 @@ class TestCredentials:
 
     def test_clear_when_no_file(self, tmp_path, monkeypatch):
         config_file = tmp_path / "nonexistent"
-        monkeypatch.setattr("indepacer.config.CONFIG_FILE", config_file)
+        monkeypatch.setattr("pacer_cli.config.CONFIG_FILE", config_file)
         assert clear_credentials() is False

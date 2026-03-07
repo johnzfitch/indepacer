@@ -1,11 +1,11 @@
-# Contributing to indepacer
+# Contributing to pacer-cli
 
 ## Development Setup
 
 ```bash
 # Clone the repo
-git clone git@github.com:johnzfitch/indepacer.git
-cd indepacer
+git clone git@github.com:johnzfitch/pacer-cli.git
+cd pacer-cli
 
 # Create virtual environment
 python -m venv .venv
@@ -24,7 +24,7 @@ ruff check src/
 ## Project Structure
 
 ```
-src/indepacer/
+src/pacer-cli/
   __init__.py
   cli.py           # Click CLI commands
   config.py        # PacerConfig, credentials
@@ -82,7 +82,7 @@ Use Rich for output:
 pytest
 
 # Run with coverage
-pytest --cov=indepacer
+pytest --cov=pacer-cli
 
 # Run specific test
 pytest tests/test_parser.py -v

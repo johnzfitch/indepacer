@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from indepacer.auth import AuthResult, authenticate, generate_totp, logout, test_credentials
-from indepacer.config import PacerConfig
+from pacer_cli.auth import AuthResult, authenticate, generate_totp, logout, test_credentials
+from pacer_cli.config import PacerConfig
 
 
 class TestGenerateTotp:
@@ -26,7 +26,7 @@ class TestAuthenticate:
         assert result.success is False
         assert "not configured" in result.error
 
-    @patch("indepacer.auth.requests.post")
+    @patch("pacer_cli.auth.requests.post")
     def test_successful_auth(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -42,7 +42,7 @@ class TestAuthenticate:
         assert result.success is True
         assert result.token is not None
 
-    @patch("indepacer.auth.requests.post")
+    @patch("pacer_cli.auth.requests.post")
     def test_failed_auth(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -57,7 +57,7 @@ class TestAuthenticate:
         result = authenticate(cfg)
         assert result.success is False
 
-    @patch("indepacer.auth.requests.post")
+    @patch("pacer_cli.auth.requests.post")
     def test_network_error(self, mock_post):
         mock_post.side_effect = requests.ConnectionError("timeout")
 
@@ -68,7 +68,7 @@ class TestAuthenticate:
 
 
 class TestLogout:
-    @patch("indepacer.auth.requests.post")
+    @patch("pacer_cli.auth.requests.post")
     def test_successful_logout(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"loginResult": "0"}
@@ -77,7 +77,7 @@ class TestLogout:
         cfg = PacerConfig()
         assert logout(cfg, "sometoken") is True
 
-    @patch("indepacer.auth.requests.post")
+    @patch("pacer_cli.auth.requests.post")
     def test_failed_logout(self, mock_post):
         mock_post.side_effect = Exception("network error")
 
@@ -86,8 +86,8 @@ class TestLogout:
 
 
 class TestTestCredentials:
-    @patch("indepacer.auth.logout")
-    @patch("indepacer.auth.authenticate")
+    @patch("pacer_cli.auth.logout")
+    @patch("pacer_cli.auth.authenticate")
     def test_authenticates_and_logs_out(self, mock_auth, mock_logout):
         mock_auth.return_value = AuthResult(success=True, token="token123")
         mock_logout.return_value = True

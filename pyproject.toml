@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "indepacer"
+name = "pacer-cli"
 version = "0.2.0"
 description = "CLI tool for PACER legal document research"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "Zack Fitch" }]
-keywords = ["pacer", "legal", "court", "docket", "cli"]
+keywords = ["pacer", "legal", "court", "docket", "cli", "federal-courts"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -44,17 +44,17 @@ dev = [
 ]
 
 [project.scripts]
-pacer = "indepacer.cli:cli"
+pacer = "pacer_cli.cli:cli"
 
 [project.urls]
-Homepage = "https://github.com/zackfitch/indepacer"
-Documentation = "https://pacer-lib.readthedocs.io/en/latest/"
+Homepage = "https://github.com/johnzfitch/pacer-cli"
+Repository = "https://github.com/johnzfitch/pacer-cli"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/indepacer"]
+packages = ["src/pacer_cli"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/indepacer/data" = "indepacer/data"
+"src/pacer_cli/data" = "pacer_cli/data"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

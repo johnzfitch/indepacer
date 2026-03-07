@@ -9,10 +9,10 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in indepacer, please report it responsibly:
+If you discover a security vulnerability in pacer-cli, please report it responsibly:
 
 1. **Do not** open a public issue
-2. Use [GitHub's private vulnerability reporting](https://github.com/johnzfitch/indepacer/security/advisories/new)
+2. Use [GitHub's private vulnerability reporting](https://github.com/johnzfitch/pacer-cli/security/advisories/new)
 3. Or email the maintainer directly
 
 We will respond within 48 hours and aim to publish a fix within 7 days for critical issues.

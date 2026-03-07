@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from indepacer.models import (
+from pacer_cli.models import (
     BatchJobInfo,
     CaseResult,
     CaseSearchCriteria,

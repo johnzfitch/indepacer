@@ -116,7 +116,7 @@ class DocketParser:
         if not HAS_BS4:
             raise ImportError(
                 "BeautifulSoup4 required for parse_data(). "
-                "Install with: pip install 'indepacer[full]'"
+                "Install with: pip install 'pacer-cli[full]'"
             )
 
         parsed_docket_table: list[list[str]] = []
