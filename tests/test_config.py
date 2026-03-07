@@ -18,14 +18,14 @@ from indepacer.config import (
 
 class TestPacerConfig:
     def test_defaults(self):
-        cfg = PacerConfig()
+        cfg = PacerConfig(_env_file=None)
         assert cfg.username is None
         assert cfg.rate_limit is True
         assert cfg.rate_limit_rpm == 30
         assert cfg.tls_level == "standard"
 
     def test_has_mfa_false_by_default(self):
-        cfg = PacerConfig()
+        cfg = PacerConfig(_env_file=None)
         assert cfg.has_mfa is False
 
     def test_has_mfa_true_with_secret(self):

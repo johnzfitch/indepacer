@@ -1,7 +1,7 @@
 """Minimal encrypted credential vault for PACER.
 
 Stores credentials encrypted with AES-256-GCM, key derived via Scrypt.
-No external dependencies beyond `cryptography` (already used by requests).
+Depends on the `cryptography` package.
 
 Usage:
     vault = PacerVault()
@@ -22,9 +22,32 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 VAULT_PATH = Path.home() / ".pacer" / "vault.json"
-SCRYPT_N = 2**18  # ~256MB memory, ~1s on modern CPU
-SCRYPT_R = 8
-SCRYPT_P = 1
+
+
+def _get_int_env(name: str, default: int) -> int:
+    """Return a positive int from environment or the given default on error."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    if value <= 0:
+        return default
+    return value
+
+
+# Default Scrypt parameters: moderate memory usage but still memory-hard.
+# Users can override via environment variables, e.g.:
+#   PACER_VAULT_SCRYPT_N, PACER_VAULT_SCRYPT_R, PACER_VAULT_SCRYPT_P
+DEFAULT_SCRYPT_N = 2**14  # ~16MB memory, suitable for most systems
+DEFAULT_SCRYPT_R = 8
+DEFAULT_SCRYPT_P = 1
+
+SCRYPT_N = _get_int_env("PACER_VAULT_SCRYPT_N", DEFAULT_SCRYPT_N)
+SCRYPT_R = _get_int_env("PACER_VAULT_SCRYPT_R", DEFAULT_SCRYPT_R)
+SCRYPT_P = _get_int_env("PACER_VAULT_SCRYPT_P", DEFAULT_SCRYPT_P)
 SALT_SIZE = 32
 NONCE_SIZE = 12
 KEY_SIZE = 32
@@ -175,14 +198,21 @@ class PacerVault:
             "salt": b64encode(self._salt).decode(),
             "check": check,
             "secrets": self._data,
+            "kdf": {
+                "algorithm": "scrypt",
+                "n": SCRYPT_N,
+                "r": SCRYPT_R,
+                "p": SCRYPT_P,
+                "key_size": KEY_SIZE,
+            },
         }
 
-        # Write atomically
+        # Write atomically (os.replace works cross-platform)
         tmp_path = self.path.with_suffix(".tmp")
         with open(tmp_path, "w") as f:
             json.dump(vault_data, f, indent=2)
         os.chmod(tmp_path, 0o600)
-        tmp_path.rename(self.path)
+        os.replace(tmp_path, self.path)
 
     def change_passphrase(self, old_passphrase: str, new_passphrase: str) -> None:
         """Change vault passphrase, re-encrypting all secrets."""

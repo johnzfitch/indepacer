@@ -19,9 +19,11 @@ from .config import (
     clear_credentials,
     ensure_dirs,
     get_config,
+    get_config_from_vault,
     mark_migration_complete,
     migration_marker_exists,
     save_credentials,
+    vault_exists,
 )
 from .security import BULK_DOWNLOAD_THRESHOLD, show_peak_hours_warning
 
@@ -200,7 +202,20 @@ def cli(ctx, yes: bool):
       Use --yes / -y to skip confirmation (for scripting).
     """
     ctx.ensure_object(dict)
-    ctx.obj["config"] = get_config()
+
+    # Load config - check vault first
+    if vault_exists():
+        from rich.prompt import Prompt
+        try:
+            passphrase = Prompt.ask("[dim]Vault passphrase[/]", password=True)
+            ctx.obj["config"] = get_config_from_vault(passphrase)
+        except Exception as e:
+            err_console.print(f"[red]Failed to unlock vault:[/] {e}")
+            err_console.print("[dim]Using config file fallback...[/]")
+            ctx.obj["config"] = get_config()
+    else:
+        ctx.obj["config"] = get_config()
+
     ctx.obj["auto_confirm"] = yes
     
     # Check for legacy archive on first run (unless migrated)
@@ -401,15 +416,160 @@ def auth():
     pass
 
 
+@auth.command("init")
+@click.option("--qa", is_flag=True, help="Configure for QA environment instead of production")
+@click.option("--no-vault", is_flag=True, help="Skip encrypted vault (use plain config file)")
+@click.pass_context
+def auth_init(ctx, qa: bool, no_vault: bool):
+    """Interactive setup wizard for PACER credentials.
+
+    \b
+    Guides you through:
+      1. Username and password
+      2. MFA setup (if enabled on your PACER account)
+      3. Encrypted vault setup (recommended)
+      4. Credential verification against PACER servers
+
+    \b
+    Example:
+      pacer auth init              # Production setup (encrypted by default)
+      pacer auth init --qa         # QA environment setup
+      pacer auth init --no-vault   # Skip encryption (not recommended)
+    """
+    from rich.prompt import Confirm, Prompt
+
+    from .auth import authenticate, generate_totp, logout
+
+    env_name = "QA" if qa else "Production"
+    console.print(Panel(
+        f"[bold]PACER Credential Setup[/] - {env_name} Environment\n\n"
+        "This wizard will configure your PACER credentials and verify they work.",
+        title="Setup Wizard",
+        border_style="blue",
+    ))
+
+    # Step 1: Username and password
+    console.print("\n[bold cyan]Step 1:[/] Enter your PACER credentials\n")
+    username = Prompt.ask("  PACER Username")
+    password = Prompt.ask("  PACER Password", password=True)
+
+    # Step 2: MFA
+    console.print("\n[bold cyan]Step 2:[/] Multi-Factor Authentication\n")
+    console.print("  [dim]If MFA is enabled on your PACER account, you'll need the Base32[/]")
+    console.print("  [dim]secret from PACER's 'Manage My Account' → MFA setup page.[/]")
+    console.print("  [dim]This is the text shown below the QR code (not the QR code itself).[/]\n")
+
+    has_mfa = Confirm.ask("  Is MFA enabled on your PACER account?", default=False)
+    totp_secret = None
+
+    if has_mfa:
+        while True:
+            totp_secret = Prompt.ask("  TOTP Secret (Base32 string)").strip().upper()
+            if not totp_secret:
+                console.print("  [yellow]Skipping MFA setup.[/]")
+                totp_secret = None
+                break
+
+            # Validate by generating a code
+            try:
+                code = generate_totp(totp_secret)
+                console.print(f"  [green]Valid![/] Current code: [bold]{code}[/]")
+                console.print("  [dim]This code should match what you'd see in Authy/Google Authenticator.[/]")
+                if Confirm.ask("  Does this code look correct?", default=True):
+                    break
+                else:
+                    console.print("  [yellow]Let's try again.[/]")
+            except Exception as e:
+                console.print(f"  [red]Invalid secret:[/] {e}")
+                console.print("  [dim]The secret should be a Base32 string (letters A-Z and digits 2-7).[/]")
+                if not Confirm.ask("  Try again?", default=True):
+                    totp_secret = None
+                    break
+
+    # Step 3: Vault encryption (default: enabled)
+    passphrase = None
+    if no_vault:
+        console.print("\n[bold cyan]Step 3:[/] Storage\n")
+        console.print("  [yellow]Skipping encryption (--no-vault specified)[/]")
+        console.print("  [dim]Credentials will be stored in plain text at ~/.config/indepacer/config.env[/]")
+    else:
+        console.print("\n[bold cyan]Step 3:[/] Encrypted Storage (Recommended)\n")
+        console.print("  [dim]Your credentials will be encrypted with AES-256-GCM.[/]")
+        console.print("  [dim]You'll need this passphrase when using pacer.[/]\n")
+
+        use_vault = Confirm.ask("  Enable encrypted vault?", default=True)
+        if use_vault:
+            while True:
+                passphrase = Prompt.ask("  Vault passphrase (min 8 chars)", password=True)
+                if len(passphrase) < 8:
+                    console.print("  [red]Passphrase must be at least 8 characters.[/]")
+                    continue
+                confirm = Prompt.ask("  Confirm passphrase", password=True)
+                if passphrase != confirm:
+                    console.print("  [red]Passphrases don't match.[/]")
+                    continue
+                break
+        else:
+            console.print("  [yellow]Credentials will be stored in plain text.[/]")
+
+    # Step 4: Test connection
+    console.print("\n[bold cyan]Step 4:[/] Verifying credentials with PACER...\n")
+
+    # Build test config
+    test_config = PacerConfig(
+        username=username,
+        password=password,
+        totp_secret=totp_secret,
+        use_qa=qa,
+        _env_file=None,
+    )
+
+    with console.status("  Authenticating...", spinner="dots"):
+        result = authenticate(test_config)
+
+    if result.success:
+        console.print("  [green]Authentication successful![/]")
+        # Logout cleanly
+        logout(test_config, result.token)
+    else:
+        console.print(f"  [red]Authentication failed:[/] {result.error}")
+        if not Confirm.ask("\n  Save credentials anyway?", default=False):
+            console.print("[yellow]Setup cancelled.[/]")
+            return
+
+    # Step 5: Save credentials
+    console.print("\n[bold cyan]Step 5:[/] Saving credentials...\n")
+    try:
+        config_path = save_credentials(
+            username=username,
+            password=password,
+            totp_secret=totp_secret,
+            client_code=None,
+            vault_passphrase=passphrase,
+        )
+        storage_type = "encrypted vault" if passphrase else "config file"
+        console.print(f"  [green]Saved to {storage_type}:[/] {config_path}")
+        console.print("  [dim]File permissions: 600 (owner read/write only)[/]")
+    except Exception as e:
+        console.print(f"  [red]Failed to save:[/] {e}")
+        return
+
+    # Summary
+    console.print(Panel(
+        f"[green]Setup complete![/]\n\n"
+        f"  Environment: {env_name}\n"
+        f"  Username: {username}\n"
+        f"  MFA: {'Configured' if totp_secret else 'Not configured'}\n"
+        f"  Storage: {'Encrypted vault' if passphrase else 'Plain config file'}\n\n"
+        f"[dim]Try: pacer pcl cases -t \"test\" to search cases[/]",
+        title="Success",
+        border_style="green",
+    ))
+
+
 @auth.command("login")
-@click.option("--username", "-u", prompt="PACER Username", help="Your PACER username")
-@click.option(
-    "--password",
-    "-p",
-    prompt="PACER Password",
-    hide_input=True,
-    help="Your PACER password",
-)
+@click.option("--username", "-u", default=None, help="Your PACER username")
+@click.option("--password", "-p", default=None, help="Your PACER password")
 @click.option(
     "--totp-secret",
     "-t",
@@ -422,17 +582,34 @@ def auth():
     default=None,
     help="Client billing code (optional)",
 )
-def auth_login(username: str, password: str, totp_secret: Optional[str], client_code: Optional[str]):
+@click.pass_context
+def auth_login(ctx, username: Optional[str], password: Optional[str], totp_secret: Optional[str], client_code: Optional[str]):
     """Store PACER credentials securely.
 
     \b
-    For MFA-enabled accounts, provide the TOTP secret from PACER's
-    "Manage My Account" MFA setup page. This allows automatic OTP generation.
+    If no credentials exist, runs the full setup wizard (pacer auth init).
+    Otherwise, updates existing credentials.
 
     \b
     Example:
-      pacer auth login -u myuser -p mypass -t QA36DEZ5EBAV5PSI5URBQLSNVBJZH2PJ
+      pacer auth login                    # Interactive (wizard if first time)
+      pacer auth login -u myuser -p pass  # Quick update
     """
+    from .config import CONFIG_FILE
+
+    # If no credentials exist and no args provided, run the full wizard
+    if not CONFIG_FILE.exists() and not vault_exists() and username is None:
+        console.print("[dim]No credentials found. Starting setup wizard...[/]\n")
+        ctx.invoke(auth_init)
+        return
+
+    # Prompt for missing credentials
+    from rich.prompt import Prompt
+    if username is None:
+        username = Prompt.ask("PACER Username")
+    if password is None:
+        password = Prompt.ask("PACER Password", password=True)
+
     config_path = save_credentials(username, password, totp_secret, client_code)
     console.print(f"[green]Credentials saved to:[/] {config_path}")
     console.print("[dim]File permissions set to 600 (owner read/write only)[/]")
@@ -442,6 +619,47 @@ def auth_login(username: str, password: str, totp_secret: Optional[str], client_
     else:
         console.print("[yellow]MFA:[/] No TOTP secret provided.")
         console.print("[dim]If your account has MFA enabled, use --totp-secret or pacer auth setup-mfa[/]")
+
+
+@auth.command("code")
+@click.option("--watch", "-w", is_flag=True, help="Continuously display codes (updates every 30s)")
+@click.pass_context
+def auth_code(ctx, watch: bool):
+    """Generate current TOTP code from stored secret.
+
+    \b
+    Useful for:
+      - Logging into PACER web interface manually
+      - Removing/resetting MFA on your PACER account
+      - Verifying your TOTP secret is correct
+    """
+    config: PacerConfig = ctx.obj["config"]
+
+    if not config.totp_secret:
+        err_console.print("[red]No TOTP secret configured.[/]")
+        err_console.print("Run [cyan]pacer auth setup-mfa[/] to configure MFA.")
+        sys.exit(1)
+
+    from .auth import generate_totp
+    import time
+
+    secret = config.totp_secret.get_secret_value()
+
+    if watch:
+        console.print("[dim]Press Ctrl+C to stop[/]\n")
+        try:
+            while True:
+                code = generate_totp(secret)
+                # Calculate seconds until next code
+                remaining = 30 - (int(time.time()) % 30)
+                console.print(f"\r[bold green]{code}[/]  [dim]expires in {remaining:2d}s[/]", end="")
+                time.sleep(1)
+        except KeyboardInterrupt:
+            console.print("\n")
+    else:
+        code = generate_totp(secret)
+        remaining = 30 - (int(time.time()) % 30)
+        console.print(f"[bold green]{code}[/]  [dim]expires in {remaining}s[/]")
 
 
 @auth.command("setup-mfa")
@@ -460,7 +678,7 @@ def auth_setup_mfa(ctx, totp_secret: str):
     MFA enrollment. It's the Base32 string shown below the QR code.
 
     \b
-    Example secret format: QA36DEZ5EBAV5PSI5URBQLSNVBJZH2PJ
+    Example secret format: JBSWY3DPEHPK3PXP
     """
     config: PacerConfig = ctx.obj["config"]
 

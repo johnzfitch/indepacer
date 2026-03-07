@@ -22,7 +22,7 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Literal, Optional
 
@@ -215,7 +215,7 @@ class AuditLogger:
     def _ensure_logger(self) -> logging.Logger:
         if self._logger is None:
             self.log_dir.mkdir(parents=True, exist_ok=True)
-            log_file = self.log_dir / f"audit-{datetime.utcnow():%Y-%m}.log"
+            log_file = self.log_dir / f"audit-{datetime.now(timezone.utc):%Y-%m}.log"
             self._logger = logging.getLogger("pacer.audit")
             self._logger.setLevel(logging.INFO)
             if not self._logger.handlers:

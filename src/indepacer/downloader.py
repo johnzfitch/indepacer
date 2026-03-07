@@ -49,7 +49,7 @@ def extract_document_metadata(
         Dictionary with document metadata suitable for docs.json
     """
     import json
-    from datetime import datetime
+    from datetime import datetime, timezone
     from urllib.parse import urljoin
 
     from .parser import parse_docket
@@ -62,7 +62,7 @@ def extract_document_metadata(
             "case_number": case_number,
             "court_id": court_id,
             "base_url": base_url,
-            "downloaded_at": datetime.utcnow().isoformat() + "Z",
+            "downloaded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "documents": [],
             "parse_error": True,
         }
@@ -85,7 +85,7 @@ def extract_document_metadata(
         "court_id": court_id or docket.meta.court_id or "",
         "case_title": docket.meta.case_title or "",
         "base_url": base_url,
-        "downloaded_at": datetime.utcnow().isoformat() + "Z",
+        "downloaded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "document_count": len(documents),
         "documents": documents,
     }

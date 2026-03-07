@@ -1,6 +1,6 @@
-"""TOTP implementation using only Python stdlib.
+"""TOTP implementation using only the Python standard library.
 
-Replaces pyotp dependency with ~20 lines of code.
+Provides a small stdlib-only replacement for the pyotp dependency.
 Implements RFC 6238 (TOTP) and RFC 4226 (HOTP).
 """
 
@@ -56,9 +56,10 @@ def totp(secret: str, time_step: int = 30, digits: int = 6) -> str:
         Current OTP as zero-padded string
 
     Raises:
-        ValueError: If secret is empty or time_step is 0
-        ZeroDivisionError: If time_step is 0
+        ValueError: If secret is empty or time_step <= 0
     """
+    if time_step <= 0:
+        raise ValueError("time_step must be a positive integer")
     counter = int(time() // time_step)
     return hotp(secret, counter, digits)
 

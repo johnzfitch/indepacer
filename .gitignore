@@ -51,6 +51,10 @@ results/
 .env
 *.env.local
 config.env
+*secret*.txt
+*key*.txt
+*.pem
+*.key
 
 # OS
 .DS_Store

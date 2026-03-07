@@ -114,7 +114,7 @@ pacer auth login
 pacer auth login -u myuser -p mypass
 
 # With MFA
-pacer auth login -u myuser -p mypass -t QA36DEZ5EBAV5PSI5URBQLSNVBJZH2PJ
+pacer auth login -u myuser -p mypass -t JBSWY3DPEHPK3PXP
 ```
 
 ### pacer auth setup-mfa
@@ -696,7 +696,7 @@ Stored in `~/.config/indepacer/config.env` (mode 600):
 ```env
 PACER_USERNAME=myuser
 PACER_PASSWORD=mypassword
-PACER_TOTP_SECRET=QA36DEZ5EBAV5PSI5URBQLSNVBJZH2PJ
+PACER_TOTP_SECRET=JBSWY3DPEHPK3PXP
 PACER_CLIENT_CODE=MYCLIENT
 ```
 
@@ -744,10 +744,10 @@ PACER requires MFA for CM/ECF filing accounts by December 2025.
 
 ```bash
 # During initial login
-pacer auth login -t QA36DEZ5EBAV5PSI5URBQLSNVBJZH2PJ
+pacer auth login -t JBSWY3DPEHPK3PXP
 
 # Or add to existing account
-pacer auth setup-mfa -t QA36DEZ5EBAV5PSI5URBQLSNVBJZH2PJ
+pacer auth setup-mfa -t JBSWY3DPEHPK3PXP
 ```
 
 ### Manual OTP

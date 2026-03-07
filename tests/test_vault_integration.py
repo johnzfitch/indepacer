@@ -2,36 +2,48 @@
 
 import tempfile
 from pathlib import Path
-from unittest import TestCase, main
+
+import pytest
+from pydantic import SecretStr
 
 
-class TestOTP(TestCase):
+class TestOTP:
     """Test TOTP implementation."""
 
     def test_hotp_generates_6_digits(self):
         from indepacer.otp import hotp
         code = hotp("JBSWY3DPEHPK3PXP", counter=1)
-        self.assertEqual(len(code), 6)
-        self.assertTrue(code.isdigit())
+        assert len(code) == 6
+        assert code.isdigit()
 
     def test_totp_generates_6_digits(self):
         from indepacer.otp import totp
         code = totp("JBSWY3DPEHPK3PXP")
-        self.assertEqual(len(code), 6)
-        self.assertTrue(code.isdigit())
+        assert len(code) == 6
+        assert code.isdigit()
+
+    def test_totp_rejects_zero_time_step(self):
+        from indepacer.otp import totp
+        with pytest.raises(ValueError, match="time_step must be a positive integer"):
+            totp("JBSWY3DPEHPK3PXP", time_step=0)
+
+    def test_totp_rejects_negative_time_step(self):
+        from indepacer.otp import totp
+        with pytest.raises(ValueError, match="time_step must be a positive integer"):
+            totp("JBSWY3DPEHPK3PXP", time_step=-1)
 
     def test_empty_secret_raises(self):
         from indepacer.otp import hotp
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             hotp("", counter=1)
 
     def test_generate_totp_alias(self):
         from indepacer.otp import generate_totp
         code = generate_totp("JBSWY3DPEHPK3PXP")
-        self.assertEqual(len(code), 6)
+        assert len(code) == 6
 
 
-class TestVault(TestCase):
+class TestVault:
     """Test encrypted vault."""
 
     def test_vault_init_and_unlock(self):
@@ -43,7 +55,7 @@ class TestVault(TestCase):
 
             # Init
             vault.init("test-passphrase")
-            self.assertTrue(vault.exists)
+            assert vault.exists
 
             # Set secrets
             vault.set("PACER_PASSWORD", "my-secret")
@@ -52,7 +64,7 @@ class TestVault(TestCase):
             # Unlock in new instance
             vault2 = PacerVault(path=vault_path)
             vault2.unlock("test-passphrase")
-            self.assertEqual(vault2.get("PACER_PASSWORD"), "my-secret")
+            assert vault2.get("PACER_PASSWORD") == "my-secret"
 
     def test_wrong_passphrase_fails(self):
         from indepacer.vault import PacerVault, VaultError
@@ -65,28 +77,26 @@ class TestVault(TestCase):
             vault.save()
 
             vault2 = PacerVault(path=vault_path)
-            with self.assertRaises(VaultError):
+            with pytest.raises(VaultError):
                 vault2.unlock("wrong-passphrase")
 
 
-class TestConfigQATOTP(TestCase):
+class TestConfigQATOTP:
     """Test QA TOTP secret handling."""
 
     def test_active_totp_secret_production(self):
         from indepacer.config import PacerConfig
-        from pydantic import SecretStr
 
         config = PacerConfig(
             totp_secret=SecretStr("PROD_SECRET"),
             qa_totp_secret=SecretStr("QA_SECRET"),
             use_qa=False,
-            _env_file=None,  # Don't load from env file
+            _env_file=None,
         )
-        self.assertEqual(config.active_totp_secret.get_secret_value(), "PROD_SECRET")
+        assert config.active_totp_secret.get_secret_value() == "PROD_SECRET"
 
     def test_active_totp_secret_qa(self):
         from indepacer.config import PacerConfig
-        from pydantic import SecretStr
 
         config = PacerConfig(
             totp_secret=SecretStr("PROD_SECRET"),
@@ -94,11 +104,22 @@ class TestConfigQATOTP(TestCase):
             use_qa=True,
             _env_file=None,
         )
-        self.assertEqual(config.active_totp_secret.get_secret_value(), "QA_SECRET")
+        assert config.active_totp_secret.get_secret_value() == "QA_SECRET"
+
+    def test_active_totp_secret_qa_fallback(self):
+        """QA mode falls back to totp_secret when qa_totp_secret is not set."""
+        from indepacer.config import PacerConfig
+
+        config = PacerConfig(
+            totp_secret=SecretStr("PROD_SECRET"),
+            qa_totp_secret=None,
+            use_qa=True,
+            _env_file=None,
+        )
+        assert config.active_totp_secret.get_secret_value() == "PROD_SECRET"
 
     def test_has_mfa_true_when_active_secret_set(self):
         from indepacer.config import PacerConfig
-        from pydantic import SecretStr
 
         # QA mode with only QA secret
         config = PacerConfig(
@@ -106,11 +127,10 @@ class TestConfigQATOTP(TestCase):
             use_qa=True,
             _env_file=None,
         )
-        self.assertTrue(config.has_mfa)
+        assert config.has_mfa
 
     def test_has_mfa_false_when_no_active_secret(self):
         from indepacer.config import PacerConfig
-        from pydantic import SecretStr
 
         # Production mode with only QA secret (no prod secret)
         config = PacerConfig(
@@ -119,8 +139,36 @@ class TestConfigQATOTP(TestCase):
             use_qa=False,
             _env_file=None,
         )
-        self.assertFalse(config.has_mfa)
+        assert not config.has_mfa
 
 
-if __name__ == "__main__":
-    main()
+class TestVaultPassphraseValidation:
+    """Test vault passphrase requirements."""
+
+    def test_empty_passphrase_rejected(self):
+        from indepacer.config import _save_credentials_vault
+        from indepacer.vault import VaultError
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            import indepacer.config as config_module
+            original_vault_file = config_module.VAULT_FILE
+            config_module.VAULT_FILE = Path(tmpdir) / "vault.json"
+            try:
+                with pytest.raises(VaultError, match="at least 8 characters"):
+                    _save_credentials_vault("user", "pass", passphrase="")
+            finally:
+                config_module.VAULT_FILE = original_vault_file
+
+    def test_short_passphrase_rejected(self):
+        from indepacer.config import _save_credentials_vault
+        from indepacer.vault import VaultError
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            import indepacer.config as config_module
+            original_vault_file = config_module.VAULT_FILE
+            config_module.VAULT_FILE = Path(tmpdir) / "vault.json"
+            try:
+                with pytest.raises(VaultError, match="at least 8 characters"):
+                    _save_credentials_vault("user", "pass", passphrase="short")
+            finally:
+                config_module.VAULT_FILE = original_vault_file

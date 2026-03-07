@@ -84,9 +84,12 @@ class PacerConfig(BaseSettings):
 
     @property
     def active_totp_secret(self) -> Optional[SecretStr]:
-        """Get TOTP secret for current environment (QA or production)."""
+        """Get TOTP secret for current environment (QA or production).
+
+        Falls back to totp_secret if qa_totp_secret is not set in QA mode.
+        """
         if self.use_qa:
-            return self.qa_totp_secret
+            return self.qa_totp_secret or self.totp_secret
         return self.totp_secret
 
     def get_case_dir(self, court: str, case_number: str) -> Path:
@@ -224,7 +227,10 @@ def _save_credentials_vault(
     passphrase: str = "",
 ) -> Path:
     """Save credentials to encrypted vault."""
-    from .vault import PacerVault
+    from .vault import PacerVault, VaultError
+
+    if not passphrase or len(passphrase) < 8:
+        raise VaultError("Vault passphrase must be at least 8 characters")
 
     vault = PacerVault(path=VAULT_FILE)
 
@@ -268,29 +274,31 @@ def get_config_from_vault(passphrase: str) -> PacerConfig:
     vault = PacerVault(path=VAULT_FILE)
     vault.unlock(passphrase)
 
-    # Set env vars temporarily so PacerConfig picks them up
-    env_backup = {}
-    vault_keys = ["PACER_USERNAME", "PACER_PASSWORD", "PACER_TOTP_SECRET", "PACER_CLIENT_CODE"]
+    # Read values directly from vault and construct PacerConfig
+    # (avoid setting os.environ which leaks credentials and is not thread-safe)
+    config_kwargs = {}
 
-    for key in vault_keys:
-        env_backup[key] = os.environ.get(key)
-        value = vault.get(key)
-        if value:
-            os.environ[key] = value
-        elif key in os.environ:
-            del os.environ[key]
+    username = vault.get("PACER_USERNAME")
+    if username:
+        config_kwargs["username"] = username
 
-    try:
-        config = PacerConfig()
-    finally:
-        # Restore original env
-        for key, value in env_backup.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+    password = vault.get("PACER_PASSWORD")
+    if password:
+        config_kwargs["password"] = SecretStr(password)
 
-    return config
+    totp_secret = vault.get("PACER_TOTP_SECRET")
+    if totp_secret:
+        config_kwargs["totp_secret"] = SecretStr(totp_secret)
+
+    qa_totp_secret = vault.get("PACER_QA_TOTP_SECRET")
+    if qa_totp_secret:
+        config_kwargs["qa_totp_secret"] = SecretStr(qa_totp_secret)
+
+    client_code = vault.get("PACER_CLIENT_CODE")
+    if client_code:
+        config_kwargs["client_code"] = client_code
+
+    return PacerConfig(**config_kwargs, _env_file=None)
 
 
 def clear_credentials() -> bool:

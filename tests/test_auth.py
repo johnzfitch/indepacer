@@ -21,7 +21,7 @@ class TestGenerateTotp:
 
 class TestAuthenticate:
     def test_missing_credentials(self):
-        cfg = PacerConfig()
+        cfg = PacerConfig(_env_file=None)
         result = authenticate(cfg)
         assert result.success is False
         assert "not configured" in result.error
