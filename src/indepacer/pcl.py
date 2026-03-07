@@ -16,6 +16,7 @@ T = TypeVar("T")
 
 from .auth import authenticate
 from .config import PacerConfig
+from .security import create_secure_session
 from .models import (
     BatchJobInfo,
     BatchJobListResponse,
@@ -67,7 +68,8 @@ class PCLClient:
     _session: requests.Session = field(default_factory=requests.Session, repr=False)
 
     def __post_init__(self):
-        """Initialize session with default headers."""
+        """Initialize session with TLS hardening and default headers."""
+        self._session = create_secure_session(tls_level=self.config.tls_level)
         self._session.headers.update({
             "Content-Type": "application/json",
             "Accept": "application/json",

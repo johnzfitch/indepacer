@@ -187,7 +187,7 @@ def show_peak_hours_warning(entry_count: int = 0) -> None:
         console = Console(stderr=True)
         msg = (
             f"[yellow]PACER peak hours ({PEAK_HOURS_START}AM-"
-            f"{PEAK_HOURS_END // 12}PM {tz_abbr})[/]\n"
+            f"{PEAK_HOURS_END - 12}PM {tz_abbr})[/]\n"
             "Court systems experience heavy load during business hours."
         )
         if entry_count >= BULK_DOWNLOAD_THRESHOLD:
@@ -417,13 +417,13 @@ def request_with_retry(
             if resp.status_code not in RETRYABLE_STATUS_CODES:
                 return resp
             if attempt < max_retries:
-                wait = backoff_factor ** attempt
+                wait = backoff_factor * (2 ** attempt)
                 time.sleep(wait)
             last_exc = requests.HTTPError(response=resp)
         except requests.ConnectionError as exc:
             last_exc = exc
             if attempt < max_retries:
-                wait = backoff_factor ** attempt
+                wait = backoff_factor * (2 ** attempt)
                 time.sleep(wait)
 
     raise last_exc  # type: ignore[misc]

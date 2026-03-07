@@ -23,6 +23,7 @@ from .config import (
     migration_marker_exists,
     save_credentials,
 )
+from .security import BULK_DOWNLOAD_THRESHOLD, show_peak_hours_warning
 
 console = Console()
 err_console = Console(stderr=True)
@@ -1568,6 +1569,7 @@ def pcl_cases(
             console=console,
         ) as progress:
             if all_pages:
+                show_peak_hours_warning(entry_count=BULK_DOWNLOAD_THRESHOLD)
                 progress.add_task("Fetching all pages...", total=None)
                 responses = client.search_cases_all_pages(criteria)
                 # Flatten results
@@ -1855,6 +1857,7 @@ def pcl_parties(
             console=console,
         ) as progress:
             if all_pages:
+                show_peak_hours_warning(entry_count=BULK_DOWNLOAD_THRESHOLD)
                 progress.add_task("Fetching all pages...", total=None)
                 responses = client.search_parties_all_pages(criteria)
                 all_results = []

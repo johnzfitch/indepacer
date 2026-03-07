@@ -22,6 +22,12 @@ from indepacer.docket_types import DocketEntry, DocketMeta, ParsedDocket, Party
 def _clean_env(monkeypatch, tmp_path):
     """Ensure tests don't touch real PACER config or home directory."""
     monkeypatch.setenv("HOME", str(tmp_path))
+    # Patch module-level Path constants computed at import time (before HOME was set)
+    import indepacer.config as _cfg
+    monkeypatch.setattr(_cfg, "CONFIG_DIR", tmp_path / ".config" / "indepacer")
+    monkeypatch.setattr(_cfg, "PACER_ROOT", tmp_path / ".pacer")
+    monkeypatch.setattr(_cfg, "CONFIG_FILE", tmp_path / ".config" / "indepacer" / "config.env")
+    monkeypatch.setattr(_cfg, "CONTEXT_FILE", tmp_path / ".config" / "indepacer" / "context.json")
     # Clear any PACER_ env vars that could leak into PacerConfig
     for key in list(os.environ):
         if key.startswith("PACER_"):
