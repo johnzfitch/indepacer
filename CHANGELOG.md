@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-07
+
+### Breaking
+
+- `--no-vault` flag removed from `pacer auth init` — encrypted vault is now mandatory
+- `pacer auth login` now prompts for vault passphrase (creates vault if none exists)
+- Plaintext credential storage (`config.env`) is no longer offered as an option
+
+### Fixed
+
+- Regex fallback parser (`parse_docket_regex`) captured `</h3>` closing tag as part of case number — changed `\S+` to `[\w:\-\.]+` character class
+
+### Added
+
+- Full Encrypted Vault section in README covering AES-256-GCM architecture, vault file structure, operations table, and Scrypt tuning environment variables
+- Vault documentation added to SECURITY.md
+
+### Changed
+
+- README: vault.json shown in archive directory tree
+- README: all credential storage references updated to reflect vault-only model
+- SECURITY.md: removed plaintext opt-out language
+
+---
+
 ## [0.2.1] - 2026-03-07
 
 ### Fixed
@@ -42,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `pacer auth login` now redirects to init wizard if no credentials exist
 - Vault passphrase prompted automatically when vault exists
-- Encrypted storage enabled by default in setup wizard
+- Encrypted storage enabled by default in setup wizard (made mandatory in 0.3.0)
 - Scrypt parameters lowered (2^14) for broader compatibility, configurable via env vars
 
 ### Fixed
