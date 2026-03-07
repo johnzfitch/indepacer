@@ -220,7 +220,7 @@ def parse_docket_regex(html: str) -> ParsedDocket:
     court_id = _extract_ecf_domain(html)
 
     # Case number
-    case_match = re.search(r'CASE #:\s*(\S+)', html)
+    case_match = re.search(r'CASE #:\s*([\w:\-\.]+)', html)
     case_number = case_match.group(1) if case_match else "Unknown"
 
     # Case title (plaintiff v. defendant)
