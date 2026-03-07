@@ -21,8 +21,8 @@ pip install 'pacer-cli[full]'
 ## ![checkbox](icons/checkbox.png) Quick Start
 
 ```bash
-# 1. Configure credentials
-pacer auth login
+# 1. Configure credentials (interactive wizard — sets up vault encryption by default)
+pacer auth init
 
 # 2. Search for cases (costs $0.10/page)
 pacer pcl cases -t "Apple v. Samsung"
@@ -61,12 +61,12 @@ pacer pcl cases -t "IBM" -c nysd -i
 
 | Short | Long Form | Description |
 |-------|-----------|-------------|
-| `pacer auth` | `pacer auth login` | Configure credentials |
 | `pacer docket` | `pacer download docket` | Download docket |
 | `pacer doc` | `pacer download document` | Download document |
-| `pacer view` | `pacer view` | View parsed docket |
-| `pacer docs` | `pacer docs` | List cached documents |
 | `pacer grep` | `pacer search` | Search local files |
+| `pacer find` | `pacer search` | Search local files (alias) |
+| `pacer cases` | `pacer pcl cases` | Search cases (PCL) |
+| `pacer parties` | `pacer pcl parties` | Search parties (PCL) |
 
 ---
 
@@ -92,9 +92,43 @@ pacer -y download docket 1:18-cv-08434 nysd   # no prompt
 
 ## ![key](icons/key.png) Authentication
 
+### pacer auth init
+
+Interactive setup wizard. **Start here.** Guides through credentials, MFA validation, encrypted vault setup, and a live authentication test against PACER.
+
+```
+pacer auth init [OPTIONS]
+
+Options:
+  --qa        Configure for QA environment instead of production
+  --no-vault  Skip encrypted vault (store credentials in plain text)
+```
+
+**Steps performed:**
+1. Enter username and password
+2. Optionally configure MFA (validates the TOTP secret by generating a live code)
+3. Set up encrypted vault (AES-256-GCM, enabled by default)
+4. Test credentials against PACER servers before saving
+
+**Examples:**
+```bash
+# Standard first-time setup (encrypted vault recommended)
+pacer auth init
+
+# QA environment setup
+pacer auth init --qa
+
+# Plain text storage (not recommended)
+pacer auth init --no-vault
+```
+
+Credentials are saved to `~/.pacer/vault.json` (encrypted) or `~/.config/pacer-cli/config.env` (plain).
+
+---
+
 ### pacer auth login
 
-Store PACER credentials securely.
+Store credentials non-interactively. Redirects to `auth init` if no credentials exist.
 
 ```
 pacer auth login [OPTIONS]
@@ -111,11 +145,31 @@ Options:
 # Interactive
 pacer auth login
 
-# Non-interactive
+# Non-interactive (CI/scripting)
 pacer auth login -u myuser -p mypass
 
 # With MFA
 pacer auth login -u myuser -p mypass -t JBSWY3DPEHPK3PXP
+```
+
+### pacer auth code
+
+Generate the current TOTP code from your stored secret. Useful for logging into the PACER web portal manually, or for verifying MFA is working before disabling it.
+
+```
+pacer auth code [OPTIONS]
+
+Options:
+  -w, --watch   Continuously display codes, updating every 30 seconds
+```
+
+**Examples:**
+```bash
+# Show current code
+pacer auth code
+
+# Watch mode — stays open, refreshes automatically
+pacer auth code --watch
 ```
 
 ### pacer auth setup-mfa
@@ -436,6 +490,28 @@ pacer parse file ~/.pacer/archives/nysd/1-18-cv-08434/docket.html --json
 
 > **Note:** For interactive viewing, use `pacer view` instead.
 
+### pacer parse text
+
+Extract clean plain text from a docket &mdash; optimized for LLM ingestion and token efficiency.
+
+```
+pacer parse text DOCKET_FILE [OPTIONS]
+
+Arguments:
+  DOCKET_FILE   Path to HTML docket file
+
+Options:
+  -v, --verbose       Show all entries (default: key entries only)
+  -o, --output PATH   Save to file instead of stdout
+```
+
+**Examples:**
+```bash
+pacer parse text ./docket.html           # key entries to stdout
+pacer parse text ./docket.html -v        # all entries
+pacer parse text ./docket.html -o out.txt
+```
+
 ---
 
 ## ![search](icons/search.png) Search
@@ -692,7 +768,19 @@ Shows: username, password status, output directories.
 
 ### Credentials
 
-Stored in `~/.config/pacer-cli/config.env` (mode 600):
+**Encrypted vault (recommended)** — created by `pacer auth init`:
+
+```
+~/.pacer/vault.json   # AES-256-GCM encrypted, Scrypt KDF
+```
+
+The vault passphrase is prompted at startup when a vault is present. To bypass encryption, use `pacer auth init --no-vault` or set credentials directly in the config file.
+
+**Plain config file** (fallback):
+
+```
+~/.config/pacer-cli/config.env   # mode 0600
+```
 
 ```env
 PACER_USERNAME=myuser

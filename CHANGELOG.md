@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-03-07
+
+### Fixed
+
+- Removed redundant `force-include` in `pyproject.toml` that caused a duplicate
+  `court-lookup.json` entry in the wheel, rejected by PyPI on upload
+
+### Changed
+
+- README: `pacer auth init` is now the documented first step (replaces `auth login`)
+- README: command aliases table corrected and expanded (`cases`, `parties`, `find`)
+- README: added `pacer auth init`, `pacer auth code`, and `pacer parse text` command docs
+- README: encrypted vault documented in Configuration section
+- CONTRIBUTING: fixed source path (`src/pacer-cli/` → `src/pacer_cli/`) and release process
+
+---
+
 ## [0.2.0] - 2026-03-07
 
 ### Changed

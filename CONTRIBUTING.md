@@ -24,7 +24,7 @@ ruff check src/
 ## Project Structure
 
 ```
-src/pacer-cli/
+src/pacer_cli/
   __init__.py
   cli.py           # Click CLI commands
   config.py        # PacerConfig, credentials
@@ -134,11 +134,11 @@ Benchmark on 300KB docket HTML:
 
 ## Release Process
 
-1. Update version in `pyproject.toml`
+1. Update version in `pyproject.toml` and `src/pacer_cli/__init__.py`
 2. Update CHANGELOG.md
-3. Commit: `git commit -m "Release v0.x.x"`
-4. Tag: `git tag v0.x.x`
-5. Push: `git push origin dev --tags`
+3. Commit: `git commit -m "chore: release v0.x.x"`
+4. Push: `git push origin master`
+5. Create a GitHub release — the publish workflow fires automatically on release
 
 ## Issue Labels
 
