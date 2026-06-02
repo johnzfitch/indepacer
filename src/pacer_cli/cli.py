@@ -1,6 +1,7 @@
 """PACER CLI - Command-line interface for legal document research."""
 
 import csv
+import json
 import re
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ from rich.table import Table
 from .config import (
     ContextConfig,
     PacerConfig,
+    apply_policy_csv,
     check_legacy_archive,
     clear_credentials,
     ensure_dirs,
@@ -25,7 +27,14 @@ from .config import (
     save_credentials,
     vault_exists,
 )
-from .security import BULK_DOWNLOAD_THRESHOLD, show_peak_hours_warning
+from .security import (
+    BULK_DOWNLOAD_THRESHOLD,
+    GovernanceError,
+    check_spend,
+    get_audit_logger,
+    show_peak_hours_warning,
+    spend_today,
+)
 
 console = Console()
 err_console = Console(stderr=True)
@@ -88,8 +97,6 @@ class AliasGroup(click.Group):
         cmd_name = args[0] if args else None
         
         if cmd_name and cmd_name in COMMAND_ALIASES:
-            alias_path = COMMAND_ALIASES[cmd_name]
-            
             # Get the actual command
             cmd = self.get_command(ctx, cmd_name)
             if cmd:
@@ -145,36 +152,122 @@ def confirm_cost(
     return click.confirm("Proceed?", default=True)
 
 
-def confirm_cost_pages(
+# ============================================================================
+# SPEND GOVERNANCE GATE
+# ============================================================================
+
+COST_PER_PAGE = 0.10
+PCL_SEARCH_MAX = 3.00  # PACER caps a single search/report fee at $3.00
+EXIT_GOVERNANCE = 3  # distinct from auth (1) / network errors
+
+
+def _deny(ctx: click.Context, key: str, operation: str, **fields) -> bool:
+    """Route a governance refusal to the right channel, then exit 3.
+
+    Agent mode emits a machine-readable JSON object on stderr; human mode shows
+    the rich error panel from the errors catalog. Never returns.
+    """
+    from .errors import show_error
+
+    if ctx.obj.get("agent"):
+        payload = {"error": key.upper(), "operation": operation}
+        payload.update(fields)
+        sys.stderr.write(json.dumps(payload) + "\n")
+    else:
+        detail = operation
+        if fields:
+            detail += " — " + ", ".join(f"{k}={v}" for k, v in fields.items())
+        show_error(key, detail=detail)
+    sys.exit(EXIT_GOVERNANCE)
+
+
+def enforce_spend(
     ctx: click.Context,
     operation: str,
-    pages: int,
-    cost_per_page: float = 0.10,
+    estimated_cost: float,
+    *,
+    client_code: Optional[str] = None,
     details: Optional[str] = None,
 ) -> bool:
-    """Prompt for page-based cost confirmation.
+    """Preventive spend-cap gate. Replaces the raw confirm_cost call.
 
-    Args:
-        ctx: Click context
-        operation: Description of operation
-        pages: Estimated number of pages
-        cost_per_page: Cost per page (default $0.10)
-        details: Additional details
-
-    Returns:
-        True if user confirms or auto_confirm is set
+    Returns True to proceed (within caps and authorized) or False if an
+    interactive human declines. On a cap breach it does not return — it routes
+    through _deny() and exits 3. The same enforcement (security.check_spend) is
+    shared with the MCP server so both paths obey one cap.
     """
-    estimated_cost = pages * cost_per_page
-    page_info = f"~{pages} page(s) @ ${cost_per_page:.2f}/page"
-    full_details = f"{page_info}\n{details}" if details else page_info
-    return confirm_cost(ctx, operation, estimated_cost, full_details)
+    config: PacerConfig = ctx.obj["config"]
+
+    # Apply the human policy.csv overlay lazily. A fat-fingered CSV refuses
+    # billable ops (here) while read-only commands never reach this gate.
+    try:
+        apply_policy_csv(config)
+    except ValueError as exc:
+        return _deny(ctx, "policy_invalid", operation, reason=str(exc))
+
+    effective_code = client_code or config.client_code
+    try:
+        check_spend(
+            config,
+            estimated_cost,
+            prior_spend=spend_today(),
+            client_code=effective_code,
+        )
+    except GovernanceError as exc:
+        return _deny(ctx, exc.error_key, operation, **exc.fields)
+
+    # Within caps: agent / -y proceed silently (the cap is the control);
+    # interactive humans still get the confirmation prompt.
+    if ctx.obj.get("agent") or ctx.obj.get("auto_confirm"):
+        return True
+    return confirm_cost(ctx, operation, estimated_cost, details)
+
+
+def record_spend(
+    ctx: click.Context,
+    *,
+    operation: str,
+    url: str,
+    cost: float,
+    pages: int = 0,
+) -> None:
+    """Append the actual (or page-estimated) cost to the audit log.
+
+    This is what makes spend_today() non-empty, so cumulative caps converge on
+    real spend. PCL searches pass the receipt fee; CM/ECF downloads (no receipt)
+    pass the page estimate.
+    """
+    config: PacerConfig = ctx.obj["config"]
+    logger = get_audit_logger()
+    if pages:
+        logger.log_download(
+            url, Path(operation), size_bytes=0, pages=pages,
+            cost=cost, client_code=config.client_code,
+        )
+    else:
+        logger.log_request(
+            "POST", url, status_code=200, cost=cost,
+            client_code=config.client_code,
+        )
+
+
+def matter_option(f):
+    """Reusable --matter/--client-code option for billable commands."""
+    return click.option(
+        "--matter",
+        "--client-code",
+        "client_code",
+        default=None,
+        help="PACER client/matter code (lands on the bill via X-CLIENT-CODE).",
+    )(f)
 
 
 @click.group(cls=AliasGroup)
 @click.version_option()
 @click.option("--yes", "-y", is_flag=True, help="Skip cost confirmation prompts")
+@click.option("--agent", is_flag=True, help="Non-interactive mode for AI agents (JSON errors, exit 3 on cap).")
 @click.pass_context
-def cli(ctx, yes: bool):
+def cli(ctx, yes: bool, agent: bool):
     """PACER CLI - Download, parse, and search federal court documents.
 
     A command-line interface for the PACER (Public Access to Court Electronic
@@ -203,8 +296,15 @@ def cli(ctx, yes: bool):
     """
     ctx.ensure_object(dict)
 
-    # Load config - check vault first
-    if vault_exists():
+    # Agent mode is explicit OR auto-detected when there's no TTY (piped/CI/MCP).
+    ctx.obj["agent"] = agent or not sys.stdin.isatty()
+    ctx.obj["auto_confirm"] = yes
+
+    # Load config - check vault first. Login stays human-in-the-loop: in agent /
+    # no-TTY mode we never prompt for or auto-unlock the vault. Instead we fall
+    # back to human-provisioned env/config.env credentials (get_config). If those
+    # are absent, downstream auth fails cleanly rather than hanging on a prompt.
+    if vault_exists() and not ctx.obj["agent"]:
         from rich.prompt import Prompt
         try:
             passphrase = Prompt.ask("[dim]Vault passphrase[/]", password=True)
@@ -215,8 +315,6 @@ def cli(ctx, yes: bool):
             ctx.obj["config"] = get_config()
     else:
         ctx.obj["config"] = get_config()
-
-    ctx.obj["auto_confirm"] = yes
     
     # Check for legacy archive on first run (unless migrated)
     if not migration_marker_exists():
@@ -263,7 +361,6 @@ def migrate_archive(ctx, dry_run: bool, legacy_dir: Optional[Path]):
       pacer migrate                    # Perform migration
       pacer migrate --legacy-dir ./old # Migrate from custom location
     """
-    from .parser import parse_docket
     from .downloader import extract_document_metadata
     
     config: PacerConfig = ctx.obj["config"]
@@ -316,7 +413,7 @@ def migrate_archive(ctx, dry_run: bool, legacy_dir: Optional[Path]):
         if len(files_to_migrate) > 20:
             console.print(f"[dim]... and {len(files_to_migrate) - 20} more[/]")
         
-        console.print(f"\n[dim]Run without --dry-run to perform migration.[/]")
+        console.print("\n[dim]Run without --dry-run to perform migration.[/]")
         return
     
     # Perform migration
@@ -856,7 +953,6 @@ def use_clear():
 @click.pass_context
 def use_status(ctx):
     """Show current working context."""
-    config: PacerConfig = ctx.obj["config"]
     context = ContextConfig.load()
 
     if context.is_set:
@@ -907,6 +1003,7 @@ def download():
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose/trace logging")
 @click.option("--case-link", "-l", default=None, help="Direct CM/ECF case link URL (bypasses PCL search)")
 @click.option("--legacy", is_flag=True, help="Use legacy flat archive structure")
+@matter_option
 @click.pass_context
 def download_docket_cmd(
     ctx,
@@ -915,6 +1012,7 @@ def download_docket_cmd(
     verbose: bool,
     case_link: str,
     legacy: bool,
+    client_code: Optional[str],
 ):
     """Download a single case docket.
 
@@ -933,6 +1031,10 @@ def download_docket_cmd(
     from .downloader import DocketDownloader
 
     config: PacerConfig = ctx.obj["config"]
+    # --matter override lands on the bill via X-CLIENT-CODE.
+    # TODO(unverified): confirm PACER bills per-request X-CLIENT-CODE via one live QA transaction
+    if client_code:
+        config.client_code = client_code
 
     # Resolve from context if not provided
     if not case_number or not court_id:
@@ -968,11 +1070,12 @@ def download_docket_cmd(
         if case_link:
             console.print(f"[cyan]TRACE:[/] Case link: {case_link}")
 
-    # Cost confirmation
-    if not confirm_cost_pages(
+    # Spend governance gate (replaces the raw cost prompt)
+    if not enforce_spend(
         ctx,
         "Download docket",
-        pages=5,  # Conservative estimate
+        estimated_cost=5 * COST_PER_PAGE,  # conservative ~5-page estimate
+        client_code=config.client_code,
         details=f"Case: {case_number}\nCourt: {court_normalized.upper()}",
     ):
         console.print("[dim]Cancelled.[/]")
@@ -1001,6 +1104,12 @@ def download_docket_cmd(
         console.print(f"[dim]Saved to:[/] {result.filepath}")
         console.print(f"[dim]Pages:[/] ~{result.pages} ([yellow]${result.cost:.2f}[/])")
 
+        # Record actual spend so cumulative caps converge on real cost.
+        record_spend(
+            ctx, operation=f"docket {court_normalized}/{case_number}",
+            url=str(result.filepath), cost=float(result.cost), pages=int(result.pages),
+        )
+
         # Auto-update context after successful download
         if not legacy:
             context = ContextConfig.load()
@@ -1019,8 +1128,9 @@ def download_docket_cmd(
 @click.argument("doc_number")
 @click.argument("doc_link", required=False)
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose/trace logging")
+@matter_option
 @click.pass_context
-def download_document(ctx, doc_number: str, doc_link: Optional[str], verbose: bool):
+def download_document(ctx, doc_number: str, doc_link: Optional[str], verbose: bool, client_code: Optional[str]):
     """Download a single document from a case.
 
     \b
@@ -1034,9 +1144,11 @@ def download_document(ctx, doc_number: str, doc_link: Optional[str], verbose: bo
     The document link is resolved automatically from the cached docs.json
     if you've previously downloaded the docket.
     """
-    from .downloader import DocumentDownloader, load_cached_documents, get_document_by_number
+    from .downloader import DocumentDownloader, get_document_by_number
 
     config: PacerConfig = ctx.obj["config"]
+    if client_code:
+        config.client_code = client_code
 
     # Resolve from context if no explicit link
     context = ContextConfig.load()
@@ -1057,8 +1169,8 @@ def download_document(ctx, doc_number: str, doc_link: Optional[str], verbose: bo
         doc_info = get_document_by_number(case_dir, doc_number)
         if not doc_info:
             err_console.print(f"[red]Error:[/] Document #{doc_number} not found in docs.json")
-            err_console.print(f"[dim]Available docs:[/] pacer docs")
-            err_console.print(f"[dim]Re-download docket to refresh:[/] pacer download docket")
+            err_console.print("[dim]Available docs:[/] pacer docs")
+            err_console.print("[dim]Re-download docket to refresh:[/] pacer download docket")
             sys.exit(1)
 
         doc_link = doc_info.get("url")
@@ -1083,11 +1195,12 @@ def download_document(ctx, doc_number: str, doc_link: Optional[str], verbose: bo
         output_dir = config.document_archive.resolve()
         filename = f"doc{doc_number}.pdf"
 
-    # Cost confirmation
-    if not confirm_cost_pages(
+    # Spend governance gate (replaces the raw cost prompt)
+    if not enforce_spend(
         ctx,
         "Download document",
-        pages=10,  # Conservative estimate
+        estimated_cost=10 * COST_PER_PAGE,  # conservative ~10-page estimate
+        client_code=config.client_code,
         details=f"Document #{doc_number}\nCase: {case_label}",
     ):
         console.print("[dim]Cancelled.[/]")
@@ -1108,6 +1221,12 @@ def download_document(ctx, doc_number: str, doc_link: Optional[str], verbose: bo
         console.print(f"[dim]Saved to:[/] {result.filepath}")
         if result.pages:
             console.print(f"[dim]Pages:[/] ~{result.pages} ([yellow]${result.cost:.2f}[/])")
+        # Record actual spend (CM/ECF has no PCL receipt; cost is page-derived).
+        record_spend(
+            ctx, operation=f"document #{doc_number} ({case_label})",
+            url=str(result.filepath), cost=float(result.cost or 0.0),
+            pages=int(result.pages or 0) or 1,
+        )
     else:
         err_console.print(f"[red]Error:[/] {result.error}")
 
@@ -1283,8 +1402,9 @@ def view_case(
 @click.option("--column-court", "-c", default="court_id", help="Column name for court ID")
 @click.option("--column-case", "-n", default="case_number", help="Column name for case number")
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose/trace logging")
+@matter_option
 @click.pass_context
-def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, verbose: bool):
+def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, verbose: bool, client_code: Optional[str]):
     """Download multiple dockets from a CSV file.
 
     The CSV should have columns for court ID and case number.
@@ -1298,6 +1418,8 @@ def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, ver
     from .downloader import DocketDownloader
 
     config: PacerConfig = ctx.obj["config"]
+    if client_code:
+        config.client_code = client_code
     ensure_dirs(config)
 
     cases = []
@@ -1308,11 +1430,12 @@ def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, ver
 
     console.print(f"[cyan]Found {len(cases)} cases to download[/]")
 
-    # Cost confirmation for batch
-    if not confirm_cost_pages(
+    # Spend governance gate — the whole batch is one spend decision.
+    if not enforce_spend(
         ctx,
         "Batch download",
-        pages=len(cases) * 5,  # ~5 pages per docket estimate
+        estimated_cost=len(cases) * 5 * COST_PER_PAGE,  # ~5 pages per docket
+        client_code=config.client_code,
         details=f"{len(cases)} dockets from {csv_file.name}",
     ):
         console.print("[dim]Cancelled.[/]")
@@ -1333,6 +1456,11 @@ def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, ver
                 )
                 if result.success:
                     success += 1
+                    record_spend(
+                        ctx, operation=f"batch docket {court_id}/{case_number}",
+                        url=str(result.filepath), cost=float(result.cost or 0.0),
+                        pages=int(result.pages or 0) or 1,
+                    )
                 else:
                     err_console.print(f"[red]Failed:[/] {court_id}/{case_number}: {result.error}")
                     failed += 1
@@ -1411,7 +1539,7 @@ def parse_file(ctx, docket_file: Path, output_json: bool):
 
         console.print_json(json.dumps({"data": data, "meta": meta}))
     else:
-        console.print(Panel(f"[bold]Case Metadata[/]", subtitle=str(docket_file)))
+        console.print(Panel("[bold]Case Metadata[/]", subtitle=str(docket_file)))
 
         if meta:
             table = Table(show_header=False)
@@ -1479,8 +1607,6 @@ def search_dockets(
       pacer search -r motion -w 10 -o motion_results
       pacer search -r settlement -e denied --individual
     """
-    config: PacerConfig = ctx.obj["config"]
-
     if not require:
         err_console.print("[red]Error:[/] At least one --require term is needed.")
         sys.exit(1)
@@ -1541,9 +1667,21 @@ def search_dockets(
 # ============================================================================
 
 
-@cli.command("courts")
-def list_courts():
-    """List common federal court identifiers."""
+@cli.group("courts", invoke_without_command=True)
+@click.pass_context
+def courts_group(ctx):
+    """List court identifiers, or scope searches via courts.csv.
+
+    \b
+    With no subcommand: lists common federal district court IDs.
+    Scope subcommands edit ~/.pacer/config/courts.csv (human-edited,
+    agent-read-only) so PCL searches only bill the courts you practice in:
+      pacer courts disable-all
+      pacer courts enable cand nysd
+      pacer courts status
+    """
+    if ctx.invoked_subcommand is not None:
+        return
     courts = [
         ("almdce", "Alabama Middle District"),
         ("alndce", "Alabama Northern District"),
@@ -1648,6 +1786,79 @@ def list_courts():
     console.print("\n[dim]Use these IDs with download commands.[/]")
 
 
+def _save_scope(scope: dict) -> None:
+    from .courts import write_courts_scope
+
+    path = write_courts_scope(scope)
+    enabled = sum(1 for v in scope.values() if v)
+    console.print(f"[green]Updated[/] {path} — {enabled}/{len(scope)} courts enabled")
+
+
+@courts_group.command("enable-all")
+def courts_enable_all():
+    """Enable every known court (nationwide search)."""
+    from .courts import all_search_court_ids
+
+    _save_scope({cid: True for cid in all_search_court_ids()})
+
+
+@courts_group.command("disable-all")
+def courts_disable_all():
+    """Disable every court (start from an empty allowlist)."""
+    from .courts import all_search_court_ids
+
+    _save_scope({cid: False for cid in all_search_court_ids()})
+
+
+@courts_group.command("invert")
+def courts_invert():
+    """Flip every court's enabled flag (e.g. 'enable the rest')."""
+    from .courts import all_search_court_ids, read_courts_scope
+
+    scope = read_courts_scope() or {cid: True for cid in all_search_court_ids()}
+    _save_scope({cid: not on for cid, on in scope.items()})
+
+
+@courts_group.command("enable")
+@click.argument("court_ids", nargs=-1, required=True)
+def courts_enable(court_ids):
+    """Enable the listed court IDs (e.g. cand nysd)."""
+    from .courts import all_search_court_ids, read_courts_scope
+
+    scope = read_courts_scope() or {cid: True for cid in all_search_court_ids()}
+    for cid in court_ids:
+        scope[cid.lower()] = True
+    _save_scope(scope)
+
+
+@courts_group.command("disable")
+@click.argument("court_ids", nargs=-1, required=True)
+def courts_disable(court_ids):
+    """Disable the listed court IDs (e.g. txnd)."""
+    from .courts import all_search_court_ids, read_courts_scope
+
+    scope = read_courts_scope() or {cid: True for cid in all_search_court_ids()}
+    for cid in court_ids:
+        scope[cid.lower()] = False
+    _save_scope(scope)
+
+
+@courts_group.command("status")
+def courts_status():
+    """Show the current search scope from courts.csv."""
+    from .courts import enabled_court_ids, read_courts_scope
+
+    scope = read_courts_scope()
+    if not scope:
+        console.print("[dim]No courts.csv — searches are nationwide (no scope).[/]")
+        return
+    enabled = enabled_court_ids()
+    if enabled is None:
+        console.print("[green]All known courts enabled[/] — searches are nationwide.")
+    else:
+        console.print(f"[cyan]Scoped to {len(enabled)} court(s):[/] {', '.join(enabled)}")
+
+
 @cli.command("config")
 @click.pass_context
 def show_config(ctx):
@@ -1713,6 +1924,7 @@ def pcl():
 @click.option("--csv", "output_csv", is_flag=True, help="Output as CSV")
 @click.option("--output", "-o", type=click.Path(path_type=Path), help="Output file")
 @click.option("--interactive", "-i", is_flag=True, help="Enable interactive case selection")
+@matter_option
 @click.pass_context
 def pcl_cases(
     ctx,
@@ -1734,6 +1946,7 @@ def pcl_cases(
     output_csv,
     output,
     interactive,
+    client_code,
 ):
     """Search for federal court cases.
 
@@ -1744,16 +1957,22 @@ def pcl_cases(
       pacer pcl cases --jurisdiction bk --chapter 11 -c CA
       pacer pcl cases --nos 830 --all-pages --csv -o patent_cases.csv
     """
+    from .courts import enabled_court_ids
     from .models import CaseSearchCriteria
     from .pcl import PCLClient, PCLError
 
     config: PacerConfig = ctx.obj["config"]
+    if client_code:
+        config.client_code = client_code
+
+    # Explicit --court wins; otherwise apply the courts.csv scope (None=nationwide).
+    scoped_courts = list(court) if court else enabled_court_ids()
 
     # Build search criteria
     criteria = CaseSearchCriteria(
         caseNumberFull=case_number,
         caseTitle=title,
-        courtId=list(court) if court else None,
+        courtId=scoped_courts,
         jurisdictionType=jurisdiction,
         caseType=list(case_type) if case_type else None,
         dateFiledFrom=filed_after,
@@ -1779,6 +1998,14 @@ def pcl_cases(
         console.print(f"\n[dim]Endpoint: POST /cases/find?page={page}[/]")
         console.print("[dim]Estimated cost: $0.10 per page (54 results/page)[/]")
         console.print("[dim]Remove --dry-run to execute search[/]")
+        return
+
+    # Spend governance gate. Searches only know actual cost from the receipt
+    # afterward, so gate on an estimate (a single page, or the $3.00 per-search
+    # cap for --all-pages) then record the real fee below.
+    est = PCL_SEARCH_MAX if all_pages else COST_PER_PAGE
+    if not enforce_spend(ctx, "Search cases", est, client_code=config.client_code):
+        console.print("[dim]Cancelled.[/]")
         return
 
     try:
@@ -1807,6 +2034,11 @@ def pcl_cases(
                 all_results = response.content
                 page_info = response.page_info
                 total_fee = float(response.receipt.search_fee) if response.receipt and response.receipt.search_fee else 0.0
+
+        # Record actual spend from the receipt so caps converge on real cost.
+        if total_fee > 0:
+            record_spend(ctx, operation="search cases",
+                         url="POST /cases/find", cost=total_fee)
 
         # Display cost
         if total_fee > 0:
@@ -1909,7 +2141,7 @@ def _handle_case_action(ctx, config: PacerConfig, case, action: str):
         case_dir = config.get_case_dir(court, case_number)
         case_dir.mkdir(parents=True, exist_ok=True)
 
-        console.print(f"[cyan]Downloading docket...[/]")
+        console.print("[cyan]Downloading docket...[/]")
         downloader = DocketDownloader(config)
         result = downloader.download_docket_by_link(case.case_link, case_dir, "docket.html")
 
@@ -1985,6 +2217,7 @@ def _handle_case_action(ctx, config: PacerConfig, case, action: str):
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 @click.option("--csv", "output_csv", is_flag=True, help="Output as CSV")
 @click.option("--output", "-o", type=click.Path(path_type=Path), help="Output file")
+@matter_option
 @click.pass_context
 def pcl_parties(
     ctx,
@@ -2008,6 +2241,7 @@ def pcl_parties(
     output_json,
     output_csv,
     output,
+    client_code,
 ):
     """Search for parties in federal court cases.
 
@@ -2018,20 +2252,26 @@ def pcl_parties(
       pacer pcl parties --ssn 123456789  # Bankruptcy only
       pacer pcl parties -l "Musk" --filed-after 2020-01-01 --json
     """
+    from .courts import enabled_court_ids
     from .models import CaseSearchCriteria, PartySearchCriteria
     from .pcl import PCLClient, PCLError
 
     config: PacerConfig = ctx.obj["config"]
+    if client_code:
+        config.client_code = client_code
 
     # Validate SSN usage
     if ssn and jurisdiction and jurisdiction != "bk":
         err_console.print("[yellow]Warning:[/] SSN search only works for bankruptcy cases.")
 
+    # Explicit --court wins; otherwise apply the courts.csv scope (None=nationwide).
+    scoped_courts = list(court) if court else enabled_court_ids()
+
     # Build case filter criteria
     case_criteria = None
-    if any([court, jurisdiction, filed_after, filed_before, closed_after, closed_before, nature_of_suit, chapter]):
+    if any([scoped_courts, jurisdiction, filed_after, filed_before, closed_after, closed_before, nature_of_suit, chapter]):
         case_criteria = CaseSearchCriteria(
-            courtId=list(court) if court else None,
+            courtId=scoped_courts,
             jurisdictionType=jurisdiction,
             dateFiledFrom=filed_after,
             dateFiledTo=filed_before,
@@ -2069,6 +2309,12 @@ def pcl_parties(
         console.print("[dim]Remove --dry-run to execute search[/]")
         return
 
+    # Spend governance gate (estimate now, record actual fee below).
+    est = PCL_SEARCH_MAX if all_pages else COST_PER_PAGE
+    if not enforce_spend(ctx, "Search parties", est, client_code=config.client_code):
+        console.print("[dim]Cancelled.[/]")
+        return
+
     try:
         client = PCLClient(config)
 
@@ -2094,6 +2340,11 @@ def pcl_parties(
                 all_results = response.content
                 page_info = response.page_info
                 total_fee = float(response.receipt.search_fee) if response.receipt and response.receipt.search_fee else 0.0
+
+        # Record actual spend from the receipt so caps converge on real cost.
+        if total_fee > 0:
+            record_spend(ctx, operation="search parties",
+                         url="POST /parties/find", cost=total_fee)
 
         # Display cost
         if total_fee > 0:

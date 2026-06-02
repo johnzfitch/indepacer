@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import IntPrompt, Prompt
+from rich.prompt import Prompt
 from rich.table import Table
 
 from .models import CaseResult

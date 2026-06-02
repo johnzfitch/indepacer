@@ -21,6 +21,30 @@ class ErrorContext:
 
 # Error catalog
 ERRORS = {
+    "budget_exceeded": ErrorContext(
+        title="Budget Cap Reached",
+        message="This operation would exceed a spend cap in policy.csv.",
+        suggestions=[
+            "Raise the cap in [cyan]~/.pacer/config/policy.csv[/]",
+            "Check today's spend in [cyan]~/.pacer/logs/[/]",
+        ],
+    ),
+    "matter_required": ErrorContext(
+        title="Client/Matter Code Required",
+        message="policy.csv requires a client/matter code for billable operations.",
+        suggestions=[
+            "Add: [cyan]--matter MATTER-1234[/]",
+            "Or set a default via [cyan]pacer auth login --client-code …[/]",
+        ],
+    ),
+    "policy_invalid": ErrorContext(
+        title="Policy File Unparseable",
+        message="A value in policy.csv could not be parsed; billable ops are blocked (fail-closed).",
+        suggestions=[
+            "Fix the offending row in [cyan]~/.pacer/config/policy.csv[/]",
+            "Dollar caps must be plain numbers, e.g. [cyan]5.00[/]",
+        ],
+    ),
     "auth_missing": ErrorContext(
         title="Credentials Not Configured",
         message="PACER credentials are required for this operation.",

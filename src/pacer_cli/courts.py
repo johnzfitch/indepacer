@@ -202,3 +202,87 @@ def normalize_court_id(court_id: str) -> Optional[str]:
         return cso_id
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Court search scoping (~/.pacer/config/courts.csv)
+# ---------------------------------------------------------------------------
+#
+# A firm that practices in a few districts shouldn't pay for nationwide PCL
+# hits. court is a real PCL filter (CaseSearchCriteria.court_id), so a simple
+# human-edited enable/disable list scopes searches. The CSV is human-edited and
+# agent-read-only — same invariant as policy.csv (an agent can't widen its own
+# reach).
+
+
+def _courts_csv_path() -> "Path":
+    # Imported lazily to avoid a courts <-> config import cycle at module load.
+    from .config import PACER_ROOT
+
+    return PACER_ROOT / "config" / "courts.csv"
+
+
+@lru_cache(maxsize=1)
+def all_search_court_ids() -> list[str]:
+    """All PCL/ECF-style court IDs (e.g. 'nysd') derived from login URLs.
+
+    These are the IDs CaseSearchCriteria.court_id expects, parsed from each
+    court's ecf.{domain}.uscourts.gov login URL. Courts without an ECF login
+    URL (e.g. the PCL portal itself) are omitted.
+    """
+    ids = set()
+    for court in _load_court_data():
+        m = re.search(r"ecf\.([a-z0-9]+)\.uscourts\.gov", court.get("login_url", "").lower())
+        if m:
+            ids.add(m.group(1))
+    return sorted(ids)
+
+
+def read_courts_scope() -> dict[str, bool]:
+    """Read courts.csv -> {court_id: enabled}. Empty dict if the file is absent."""
+    path = _courts_csv_path()
+    if not path.exists():
+        return {}
+    import csv as _csv
+
+    scope: dict[str, bool] = {}
+    with path.open(encoding="utf-8") as fh:
+        for row in _csv.reader(fh):
+            if not row or row[0].strip().lower() in ("court_id", ""):
+                continue
+            enabled = row[1].strip() if len(row) > 1 else "1"
+            scope[row[0].strip().lower()] = enabled not in ("0", "", "no", "false")
+    return scope
+
+
+def write_courts_scope(scope: dict[str, bool]) -> "Path":
+    """Write {court_id: enabled} to courts.csv (sorted), creating dirs as needed."""
+    path = _courts_csv_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import csv as _csv
+
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = _csv.writer(fh)
+        writer.writerow(["court_id", "enabled"])
+        for cid in sorted(scope):
+            writer.writerow([cid, "1" if scope[cid] else "0"])
+    return path
+
+
+def enabled_court_ids() -> Optional[list[str]]:
+    """Enabled court IDs for scoping a search, or None for no scope (nationwide).
+
+    Returns None when courts.csv is absent or every known court is enabled, so
+    the default behavior (search everywhere) is unchanged.
+    """
+    scope = read_courts_scope()
+    if not scope:
+        return None
+    enabled = sorted(cid for cid, on in scope.items() if on)
+    universe = set(all_search_court_ids())
+    if not enabled:
+        return enabled  # explicit empty -> caller decides (we treat as "none enabled")
+    # If everything known is enabled and nothing is disabled, treat as nationwide.
+    if set(enabled) >= universe and all(scope.values()):
+        return None
+    return enabled

@@ -14,7 +14,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
-from .auth import authenticate, AuthResult
+from .auth import authenticate
 from .config import PacerConfig
 from .courts import get_cso_court_id, get_ecf_domain_from_url
 from .models import CaseSearchCriteria
@@ -48,7 +48,6 @@ def extract_document_metadata(
     Returns:
         Dictionary with document metadata suitable for docs.json
     """
-    import json
     from datetime import datetime, timezone
     from urllib.parse import urljoin
 
@@ -107,7 +106,7 @@ def load_cached_documents(case_dir: Path) -> Optional[dict]:
         try:
             return json.loads(docs_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, IOError):
-            pass
+            pass  # unreadable docs.json cache -> treat as no cache
     return None
 
 
@@ -228,7 +227,6 @@ class DocketDownloader:
                 mfa_viewstate = vs_match.group(1) if vs_match else ""
 
                 from .auth import generate_totp
-                import time
                 time.sleep(1)  # Brief delay to ensure fresh OTP window
                 otp = generate_totp(self.config.totp_secret.get_secret_value())
 
@@ -278,7 +276,7 @@ class DocketDownloader:
 
             # Check for login errors
             if "login" in resp.url.lower() or "error" in resp.text.lower():
-                self._log(f"CSO login may have failed, checking response...")
+                self._log("CSO login may have failed, checking response...")
                 if "Invalid" in resp.text or "incorrect" in resp.text.lower():
                     self._log("Login failed: Invalid credentials")
                     return False

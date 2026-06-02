@@ -17,6 +17,7 @@ PACER_ROOT = Path.home() / ".pacer"
 VAULT_FILE = PACER_ROOT / "vault.json"
 ARCHIVE_ROOT = PACER_ROOT / "archives"
 CONTEXT_FILE = PACER_ROOT / "config" / "context.json"
+POLICY_CSV = PACER_ROOT / "config" / "policy.csv"
 
 # PACER API endpoints
 PACER_AUTH_URL = "https://pacer.login.uscourts.gov/services/cso-auth"
@@ -60,11 +61,25 @@ class PacerConfig(BaseSettings):
     audit_log: bool = True
     tls_level: Literal["standard", "strict", "paranoid"] = "standard"
 
+    # Spend governance — conservative defaults so the cap works with zero config.
+    # Lawyers raise these via the human-edited policy.csv (see apply_policy_csv);
+    # nothing in the agent path writes them.
+    per_op_cap_usd: float = 1.00  # hard stop per billable call
+    daily_cap_usd: float = 10.00  # hard stop, UTC calendar day
+    require_client_code: bool = False  # block billable ops with no matter code
+
     @field_validator("rate_limit_rpm")
     @classmethod
     def _validate_rpm(cls, v: int) -> int:
         if v < 1:
             raise ValueError("rate_limit_rpm must be >= 1 to avoid division by zero")
+        return v
+
+    @field_validator("per_op_cap_usd", "daily_cap_usd")
+    @classmethod
+    def _validate_caps(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("spend caps cannot be negative")
         return v
 
     @property
@@ -139,7 +154,7 @@ class ContextConfig(BaseModel):
                     data["case_path"] = Path(data["case_path"])
                 return cls(**data)
             except (json.JSONDecodeError, TypeError):
-                pass
+                pass  # corrupt context.json -> fall back to an empty context
         return cls()
 
     def save(self) -> Path:
@@ -170,8 +185,64 @@ class ContextConfig(BaseModel):
 
 
 def get_config() -> PacerConfig:
-    """Load configuration from environment and config file."""
+    """Load configuration from environment and config file.
+
+    Returns the base config with conservative built-in caps. The policy.csv
+    overlay is applied lazily by the billable-op gate (apply_policy_csv) so a
+    fat-fingered CSV refuses billable ops without breaking read-only commands.
+    """
     return PacerConfig()
+
+
+# Lawyer-facing CSV labels -> PacerConfig cap fields.
+_POLICY_LABELS = {
+    "max spend per search ($)": "per_op_cap_usd",
+    "max spend per day ($)": "daily_cap_usd",
+    "require client/matter code": "require_client_code",
+}
+_POLICY_FALSY = {"no", "n", "false", "off", "0"}
+
+
+def apply_policy_csv(cfg: PacerConfig) -> PacerConfig:
+    """Overlay spend caps from the human-edited ~/.pacer/config/policy.csv.
+
+    The CSV is the *human* surface for raising/lowering caps; nothing in the
+    agent path writes it. Fail-closed: a missing file keeps the conservative
+    built-in defaults, a blank cell keeps the safe default (never "unlimited"),
+    and an unparseable dollar cell raises ValueError (naming the row) so billable
+    ops refuse while read-only commands still run.
+    """
+    import csv
+
+    if not POLICY_CSV.exists():
+        return cfg
+
+    with POLICY_CSV.open(encoding="utf-8") as fh:
+        for i, row in enumerate(csv.reader(fh), start=1):
+            if not row or row[0].strip().lower() in ("setting", ""):
+                continue
+            field_name = _POLICY_LABELS.get(row[0].strip().lower())
+            if field_name is None:
+                continue  # unknown row: ignore, never fail
+            raw = row[1].strip() if len(row) > 1 else ""
+            if field_name == "require_client_code":
+                # Garbage means tighter: on unless explicitly a falsy value.
+                setattr(cfg, field_name, raw.lower() not in _POLICY_FALSY)
+            elif raw == "":
+                continue  # blank dollar cell keeps the conservative default
+            else:
+                try:
+                    value = float(raw.lstrip("$").replace(",", ""))
+                except ValueError:
+                    raise ValueError(
+                        f"policy.csv row {i}: '{raw}' is not a dollar amount"
+                    )
+                if value < 0:
+                    raise ValueError(
+                        f"policy.csv row {i}: spend caps cannot be negative"
+                    )
+                setattr(cfg, field_name, value)
+    return cfg
 
 
 def save_credentials(
