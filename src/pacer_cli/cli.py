@@ -224,6 +224,17 @@ def enforce_spend(
     return confirm_cost(ctx, operation, estimated_cost, details)
 
 
+def resolve_scope(ctx: click.Context, court, operation: str):
+    """Resolve the court scope via the single source switch, routing a refusal
+    (empty courts.csv) through _deny so callers carry no fail-open guard."""
+    from .courts import resolve_court_scope
+
+    try:
+        return resolve_court_scope(court)
+    except GovernanceError as exc:
+        return _deny(ctx, exc.error_key, operation, **exc.fields)
+
+
 def record_spend(
     ctx: click.Context,
     *,
@@ -1961,7 +1972,6 @@ def pcl_cases(
       pacer pcl cases --jurisdiction bk --chapter 11 -c CA
       pacer pcl cases --nos 830 --all-pages --csv -o patent_cases.csv
     """
-    from .courts import enabled_court_ids
     from .models import CaseSearchCriteria
     from .pcl import PCLClient, PCLError
 
@@ -1969,12 +1979,7 @@ def pcl_cases(
     if client_code:
         config.client_code = client_code
 
-    # Explicit --court wins; otherwise apply the courts.csv scope (None=nationwide).
-    scoped_courts = list(court) if court else enabled_court_ids()
-    # An explicit empty scope (courts.csv with everything disabled) must refuse,
-    # not fall through to a nationwide search (empty lists are dropped downstream).
-    if scoped_courts == []:
-        return _deny(ctx, "scope_empty", "Search cases")
+    scoped_courts = resolve_scope(ctx, court, "Search cases")  # open / scoped / refuse
 
     # Build search criteria
     criteria = CaseSearchCriteria(
@@ -2260,7 +2265,6 @@ def pcl_parties(
       pacer pcl parties --ssn 123456789  # Bankruptcy only
       pacer pcl parties -l "Musk" --filed-after 2020-01-01 --json
     """
-    from .courts import enabled_court_ids
     from .models import CaseSearchCriteria, PartySearchCriteria
     from .pcl import PCLClient, PCLError
 
@@ -2272,11 +2276,7 @@ def pcl_parties(
     if ssn and jurisdiction and jurisdiction != "bk":
         err_console.print("[yellow]Warning:[/] SSN search only works for bankruptcy cases.")
 
-    # Explicit --court wins; otherwise apply the courts.csv scope (None=nationwide).
-    scoped_courts = list(court) if court else enabled_court_ids()
-    # An explicit empty scope (all courts disabled) refuses rather than fail open.
-    if scoped_courts == []:
-        return _deny(ctx, "scope_empty", "Search parties")
+    scoped_courts = resolve_scope(ctx, court, "Search parties")  # open / scoped / refuse
 
     # Build case filter criteria
     case_criteria = None
