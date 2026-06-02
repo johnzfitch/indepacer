@@ -20,10 +20,11 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from .config import PacerConfig, apply_policy_csv, get_config
+from .config import PacerConfig, PolicyError, apply_policy_csv, get_config
 from .courts import enabled_court_ids
 from .security import (
     GovernanceError,
+    ScopeError,
     check_spend,
     get_audit_logger,
     spend_today,
@@ -67,10 +68,12 @@ def _audit(cfg: PacerConfig, url: str, cost: float) -> None:
 
 def error_payload(operation: str, exc: Exception) -> dict[str, Any]:
     """Map a refusal to the same JSON shape the CLI's ``_deny`` emits."""
-    if isinstance(exc, GovernanceError):
+    if isinstance(exc, GovernanceError):  # budget / matter / scope refusals
         return {"error": exc.error_key.upper(), "operation": operation, **exc.fields}
-    if isinstance(exc, ValueError):  # unparseable policy.csv -> fail-closed
+    if isinstance(exc, PolicyError):  # unparseable policy.csv -> fail-closed
         return {"error": "POLICY_INVALID", "operation": operation, "reason": str(exc)}
+    if isinstance(exc, ValueError):  # bad tool arguments (e.g. missing criteria)
+        return {"error": "INVALID_ARGUMENT", "operation": operation, "reason": str(exc)}
     return {"error": "INTERNAL", "operation": operation, "reason": str(exc)}
 
 
@@ -104,6 +107,8 @@ def search_cases(
 
     cfg = _load_config(client_code)
     scoped = court or enabled_court_ids()
+    if scoped == []:  # courts.csv disables every court -> refuse, don't fail open
+        raise ScopeError("courts.csv disables every court; no courts in scope")
     criteria = CaseSearchCriteria(caseNumberFull=case_number, caseTitle=title, courtId=scoped)
     if not criteria.to_api_dict():
         raise ValueError("at least one search criterion is required")
@@ -131,6 +136,8 @@ def search_parties(
 
     cfg = _load_config(client_code)
     scoped = court or enabled_court_ids()
+    if scoped == []:  # courts.csv disables every court -> refuse, don't fail open
+        raise ScopeError("courts.csv disables every court; no courts in scope")
     case_criteria = CaseSearchCriteria(courtId=scoped) if scoped else None
     criteria = PartySearchCriteria(
         lastName=last_name, firstName=first_name, courtCase=case_criteria

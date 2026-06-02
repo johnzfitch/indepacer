@@ -203,6 +203,15 @@ _POLICY_LABELS = {
 _POLICY_FALSY = {"no", "n", "false", "off", "0"}
 
 
+class PolicyError(ValueError):
+    """policy.csv has an unparseable value. Blocks billable ops (fail-closed).
+
+    A ValueError subclass so existing ``except ValueError`` callers still catch
+    it, while letting callers distinguish a policy-parse failure from an
+    ordinary invalid-argument ValueError.
+    """
+
+
 def apply_policy_csv(cfg: PacerConfig) -> PacerConfig:
     """Overlay spend caps from the human-edited ~/.pacer/config/policy.csv.
 
@@ -234,11 +243,11 @@ def apply_policy_csv(cfg: PacerConfig) -> PacerConfig:
                 try:
                     value = float(raw.lstrip("$").replace(",", ""))
                 except ValueError:
-                    raise ValueError(
+                    raise PolicyError(
                         f"policy.csv row {i}: '{raw}' is not a dollar amount"
                     )
                 if value < 0:
-                    raise ValueError(
+                    raise PolicyError(
                         f"policy.csv row {i}: spend caps cannot be negative"
                     )
                 setattr(cfg, field_name, value)

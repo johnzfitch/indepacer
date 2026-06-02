@@ -86,10 +86,17 @@ class TestErrorPayload:
         p = mcp.error_payload("search cases", exc)
         assert p == {"error": "BUDGET_EXCEEDED", "operation": "search cases", "estimated": 5.0}
 
-    def test_policy_invalid_maps_to_failclosed(self):
-        p = mcp.error_payload("search cases", ValueError("policy.csv row 2: 'x'"))
+    def test_policy_error_maps_to_failclosed(self):
+        from pacer_cli.config import PolicyError
+
+        p = mcp.error_payload("search cases", PolicyError("policy.csv row 2: 'x'"))
         assert p["error"] == "POLICY_INVALID"
         assert "row 2" in p["reason"]
+
+    def test_plain_valueerror_is_invalid_argument(self):
+        # A bad tool argument must NOT be mislabeled as a policy parse failure.
+        p = mcp.error_payload("search cases", ValueError("at least one criterion"))
+        assert p["error"] == "INVALID_ARGUMENT"
 
     def test_garbage_policy_surfaces_as_policy_invalid(self):
         # End-to-end: a fat-fingered policy.csv refuses the billable tool.
