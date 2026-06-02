@@ -39,6 +39,11 @@ class TestSpendToday:
         assert spend_today("M-2") == 0.35
         assert spend_today() == 0.75
 
+    def test_client_code_prefix_not_counted(self):
+        _log(0.40, client_code="M-10")
+        _log(0.35, client_code="M-1")
+        assert spend_today("M-1") == 0.35
+
     def test_ignores_other_days(self):
         # Write a line dated yesterday directly into the monthly log file.
         log_file = sec.LOG_DIR / f"audit-{datetime.now(timezone.utc):%Y-%m}.log"
