@@ -6,8 +6,8 @@ guarantee:
 
     No billable PACER request is ever issued when policy or scope says no.
 
-It does that with a "network tripwire" — constructing any PACER client or
-downloader raises — then drives EVERY billable surface (CLI commands + MCP
+It does that with a "network tripwire" - constructing any PACER client or
+downloader raises - then drives EVERY billable surface (CLI commands + MCP
 tools) under EVERY refusal condition and asserts the tripwire never fires. This
 is what would have caught the empty-courts.csv fail-open: the request slipping
 through despite a restrictive scope file trips the wire regardless of which
@@ -31,7 +31,7 @@ from pacer_cli.security import GovernanceError
 
 
 class NetworkReached(Exception):
-    """Raised if a billable client/downloader is constructed — the tripwire."""
+    """Raised if a billable client/downloader is constructed - the tripwire."""
 
 
 @pytest.fixture

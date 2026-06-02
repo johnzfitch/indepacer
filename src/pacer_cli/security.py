@@ -53,7 +53,7 @@ RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MAX_RETRIES = 3
 BACKOFF_FACTOR = 2.0
 
-# ECDHE-only ciphers — no deprecated DHE
+# ECDHE-only ciphers - no deprecated DHE
 SECURE_CIPHERS = "ECDHE+AESGCM:ECDHE+CHACHA20"
 
 LOG_DIR = Path.home() / ".pacer" / "logs"
@@ -175,7 +175,7 @@ def is_bulk_download(entry_count: int) -> bool:
 def show_peak_hours_warning(entry_count: int = 0) -> None:
     """Print a peak-hours warning if applicable.
 
-    Does not return a value — callers should not depend on a return.
+    Does not return a value - callers should not depend on a return.
     """
     if not is_peak_hours():
         return
@@ -300,7 +300,7 @@ def reset_audit_logger() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Spend governance — preventive cap, summed from the audit log
+# Spend governance - preventive cap, summed from the audit log
 # ---------------------------------------------------------------------------
 
 
@@ -327,7 +327,7 @@ class MatterRequired(GovernanceError):
 
 
 class ScopeError(GovernanceError):
-    """courts.csv is present but disables every court — refuse rather than
+    """courts.csv is present but disables every court - refuse rather than
     silently search nationwide (fail-closed)."""
 
     error_key = "scope_empty"
@@ -336,7 +336,7 @@ class ScopeError(GovernanceError):
 def spend_today(client_code: Optional[str] = None) -> float:
     """Sum today's billed cost (UTC calendar day) from the current audit log.
 
-    Reads the same append-only log AuditLogger writes — no separate store. Uses
+    Reads the same append-only log AuditLogger writes - no separate store. Uses
     the ``cost=$N`` token each billable call records. When ``client_code`` is
     given, only lines tagged ``client=<code>`` are counted.
     """

@@ -1,4 +1,4 @@
-"""PACER-native MCP server — the governed client, exposed over Model Context Protocol.
+"""PACER-native MCP server - the governed client, exposed over Model Context Protocol.
 
 This is a thin adapter, not new business logic. Every billable tool routes through
 the SAME preventive cap as the CLI (``security.check_spend`` summed from the audit
@@ -7,13 +7,13 @@ one trail.
 
 Invariants (identical to the CLI):
   * Caps change only via the human-edited ``policy.csv`` / ``courts.csv``. Nothing here
-    writes them — an agent cannot widen its own reach.
+    writes them - an agent cannot widen its own reach.
   * Login stays human-in-the-loop: credentials come from env / ``config.env`` (or a
     pre-unlocked vault). This server never prompts, never auto-unlocks the vault.
   * A cap breach returns a structured MCP error mirroring the CLI's ``_deny`` JSON.
 
 The ``mcp`` SDK is an optional dependency (``pip install -e '.[mcp]'``); importing this
-module does not require it — only :func:`main` / :func:`build_server` do.
+module does not require it - only :func:`main` / :func:`build_server` do.
 """
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ def error_payload(operation: str, exc: Exception) -> dict[str, Any]:
 
 
 def spend_status() -> dict[str, Any]:
-    """Today's spend vs. the active caps — a read-only budget view (no billing)."""
+    """Today's spend vs. the active caps - a read-only budget view (no billing)."""
     cfg = _load_config()
     spent = spend_today()
     return {

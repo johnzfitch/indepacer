@@ -61,7 +61,7 @@ class PacerConfig(BaseSettings):
     audit_log: bool = True
     tls_level: Literal["standard", "strict", "paranoid"] = "standard"
 
-    # Spend governance — conservative defaults so the cap works with zero config.
+    # Spend governance - conservative defaults so the cap works with zero config.
     # Lawyers raise these via the human-edited policy.csv (see apply_policy_csv);
     # nothing in the agent path writes them.
     per_op_cap_usd: float = 1.00  # hard stop per billable call

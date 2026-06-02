@@ -1,4 +1,4 @@
-"""Tests for spend_today() + check_spend() — the cumulative cap primitives."""
+"""Tests for spend_today() + check_spend() - the cumulative cap primitives."""
 
 from __future__ import annotations
 

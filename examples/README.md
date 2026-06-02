@@ -1,10 +1,10 @@
 # Example configuration
 
-Copy these into `~/.pacer/config/` and edit. Both are **human-edited surfaces** — the
+Copy these into `~/.pacer/config/` and edit. Both are **human-edited surfaces** - the
 CLI's agent mode and the MCP server only ever *read* them, never write them, so a capped
 agent can't widen its own limits.
 
-## `policy.csv` — the spend cap
+## `policy.csv` - the spend cap
 
 ```
 cp examples/policy.csv ~/.pacer/config/policy.csv
@@ -20,10 +20,10 @@ Fail-closed: a missing file uses conservative built-in caps; a blank cell keeps 
 default (never "unlimited"); an unparseable value refuses billable ops (read-only still
 works) and names the offending row.
 
-## `courts.csv` — search scoping
+## `courts.csv` - search scoping
 
 Generated/edited via `pacer courts` (`enable-all`, `disable-all`, `invert`,
-`enable <ids…>`, `disable <ids…>`), or by hand:
+`enable <ids...>`, `disable <ids...>`), or by hand:
 
 ```csv
 court_id,enabled
