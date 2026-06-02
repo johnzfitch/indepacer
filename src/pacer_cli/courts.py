@@ -272,8 +272,10 @@ def write_courts_scope(scope: dict[str, bool]) -> "Path":
 def enabled_court_ids() -> Optional[list[str]]:
     """Enabled court IDs for scoping a search, or None for no scope (nationwide).
 
-    Returns None when courts.csv is absent or every known court is enabled, so
-    the default behavior (search everywhere) is unchanged.
+    Raw view used by ``pacer courts status``: None when courts.csv is absent or
+    every known court is enabled; an empty list when the file disables
+    everything. The search path uses :func:`resolve_court_scope`, which turns
+    that empty list into a refusal rather than a silent nationwide search.
     """
     scope = read_courts_scope()
     if not scope:
@@ -281,8 +283,28 @@ def enabled_court_ids() -> Optional[list[str]]:
     enabled = sorted(cid for cid, on in scope.items() if on)
     universe = set(all_search_court_ids())
     if not enabled:
-        return enabled  # explicit empty -> caller decides (we treat as "none enabled")
+        return enabled  # explicit empty -> resolve_court_scope() refuses
     # If everything known is enabled and nothing is disabled, treat as nationwide.
     if set(enabled) >= universe and all(scope.values()):
         return None
     return enabled
+
+
+def resolve_court_scope(explicit_courts) -> Optional[list[str]]:
+    """The single open/off switch for scoping a billable search.
+
+    One source of truth so callers never re-implement the rule (which is how an
+    empty scope leaked through as a nationwide search). Returns:
+      * a non-empty list — explicit ``--court`` wins, else the enabled subset;
+      * ``None`` — search everywhere (no scope file, or every court enabled);
+    and **raises** ``ScopeError`` when courts.csv disables every court, so an
+    empty scope fails closed instead of silently widening to nationwide.
+    """
+    from .security import ScopeError  # local import: courts is lower-level than security
+
+    if explicit_courts:
+        return list(explicit_courts)
+    ids = enabled_court_ids()
+    if ids == []:
+        raise ScopeError("courts.csv disables every court; no courts in scope")
+    return ids
