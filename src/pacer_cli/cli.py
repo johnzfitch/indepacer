@@ -2280,7 +2280,18 @@ def pcl_parties(
 
     # Build case filter criteria
     case_criteria = None
-    if any([scoped_courts, jurisdiction, filed_after, filed_before, closed_after, closed_before, nature_of_suit, chapter]):
+    if any(
+        (
+            scoped_courts,
+            jurisdiction,
+            filed_after,
+            filed_before,
+            closed_after,
+            closed_before,
+            nature_of_suit,
+            chapter,
+        )
+    ):
         case_criteria = CaseSearchCriteria(
             courtId=scoped_courts,
             jurisdictionType=jurisdiction,

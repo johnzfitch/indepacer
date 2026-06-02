@@ -355,7 +355,8 @@ def spend_today(client_code: Optional[str] = None) -> float:
             if f"client={client_code}" not in tokens:
                 continue
         try:
-            total += float(line.split("cost=$")[1].split()[0])
+            _, _, cost_part = line.partition("cost=$")
+            total += float(cost_part.split(maxsplit=1)[0])
         except (IndexError, ValueError):
             continue
     return round(total, 2)
