@@ -21,7 +21,7 @@ pip install 'pacer-cli[full]'
 ## ![checkbox](icons/checkbox.png) Quick Start
 
 ```bash
-# 1. Configure credentials (interactive wizard — sets up encrypted vault)
+# 1. Configure credentials (interactive wizard - sets up encrypted vault)
 pacer auth init
 
 # 2. Search for cases (costs $0.10/page)
@@ -131,7 +131,7 @@ pacer --matter MATTER-1234 pcl cases -t "Acme"
 ### Agent mode & credentials
 
 `--agent` (auto-detected when there's no TTY) makes the CLI non-interactive: JSON errors,
-no prompts. **Login stays human-in-the-loop** — agent mode never prompts for or
+no prompts. **Login stays human-in-the-loop** - agent mode never prompts for or
 auto-unlocks the vault; it uses human-provisioned `PACER_USERNAME`/`PACER_PASSWORD`
 (env or `config.env`).
 
@@ -226,7 +226,7 @@ Options:
 # Show current code
 pacer auth code
 
-# Watch mode — stays open, refreshes automatically
+# Watch mode - stays open, refreshes automatically
 pacer auth code --watch
 ```
 
@@ -927,7 +927,7 @@ text = parse_docket_file(Path("docket.html"), "compact")
 
 ## MCP Server (for AI agents)
 
-PACER, exposed over the [Model Context Protocol](https://modelcontextprotocol.io) — the
+PACER, exposed over the [Model Context Protocol](https://modelcontextprotocol.io) - the
 governed client behind a tool interface. Every billable tool routes through the **same
 preventive cap** as the CLI and writes the same audit line, so an MCP-driven agent obeys
 one cap and leaves one trail. A read-only `spend_status` tool/resource lets the agent see
@@ -978,7 +978,7 @@ PACER charges per page viewed:
 
 pacer-cli includes a security module (`security.py`) that protects your account and federal court system resources:
 
-- **Encrypted credential vault** — AES-256-GCM encryption with Scrypt key derivation (see below)
+- **Encrypted credential vault** - AES-256-GCM encryption with Scrypt key derivation (see below)
 - **TLS 1.2+ enforcement** with ECDHE-only cipher suites (no deprecated DHE)
 - **Rate limiting** (30 req/min default, configurable) to stay within PACER guidelines
 - **Peak hours detection** (6AM-6PM Central, DST-aware via `zoneinfo`) with bulk download warnings

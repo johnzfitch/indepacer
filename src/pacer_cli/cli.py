@@ -177,7 +177,7 @@ def _deny(ctx: click.Context, key: str, operation: str, **fields) -> bool:
     else:
         detail = operation
         if fields:
-            detail += " — " + ", ".join(f"{k}={v}" for k, v in fields.items())
+            detail += " - " + ", ".join(f"{k}={v}" for k, v in fields.items())
         show_error(key, detail=detail)
     sys.exit(EXIT_GOVERNANCE)
 
@@ -193,7 +193,7 @@ def enforce_spend(
     """Preventive spend-cap gate. Replaces the raw confirm_cost call.
 
     Returns True to proceed (within caps and authorized) or False if an
-    interactive human declines. On a cap breach it does not return — it routes
+    interactive human declines. On a cap breach it does not return - it routes
     through _deny() and exits 3. The same enforcement (security.check_spend) is
     shared with the MCP server so both paths obey one cap.
     """
@@ -709,7 +709,7 @@ def auth_login(ctx, username: Optional[str], password: Optional[str], totp_secre
     if password is None:
         password = Prompt.ask("PACER Password", password=True)
 
-    # Vault passphrase is required — prompt to unlock existing or create new
+    # Vault passphrase is required - prompt to unlock existing or create new
     if vault_exists():
         passphrase = Prompt.ask("Vault passphrase", password=True)
     else:
@@ -1445,7 +1445,7 @@ def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, ver
 
     console.print(f"[cyan]Found {len(cases)} cases to download[/]")
 
-    # Spend governance gate — the whole batch is one spend decision.
+    # Spend governance gate - the whole batch is one spend decision.
     if not enforce_spend(
         ctx,
         "Batch download",
@@ -1806,7 +1806,7 @@ def _save_scope(scope: dict) -> None:
 
     path = write_courts_scope(scope)
     enabled = sum(1 for v in scope.values() if v)
-    console.print(f"[green]Updated[/] {path} — {enabled}/{len(scope)} courts enabled")
+    console.print(f"[green]Updated[/] {path} - {enabled}/{len(scope)} courts enabled")
 
 
 @courts_group.command("enable-all")
@@ -1865,11 +1865,11 @@ def courts_status():
 
     scope = read_courts_scope()
     if not scope:
-        console.print("[dim]No courts.csv — searches are nationwide (no scope).[/]")
+        console.print("[dim]No courts.csv - searches are nationwide (no scope).[/]")
         return
     enabled = enabled_court_ids()
     if enabled is None:
-        console.print("[green]All known courts enabled[/] — searches are nationwide.")
+        console.print("[green]All known courts enabled[/] - searches are nationwide.")
     else:
         console.print(f"[cyan]Scoped to {len(enabled)} court(s):[/] {', '.join(enabled)}")
 

@@ -211,7 +211,7 @@ def normalize_court_id(court_id: str) -> Optional[str]:
 # A firm that practices in a few districts shouldn't pay for nationwide PCL
 # hits. court is a real PCL filter (CaseSearchCriteria.court_id), so a simple
 # human-edited enable/disable list scopes searches. The CSV is human-edited and
-# agent-read-only — same invariant as policy.csv (an agent can't widen its own
+# agent-read-only - same invariant as policy.csv (an agent can't widen its own
 # reach).
 
 
@@ -295,8 +295,8 @@ def resolve_court_scope(explicit_courts) -> Optional[list[str]]:
 
     One source of truth so callers never re-implement the rule (which is how an
     empty scope leaked through as a nationwide search). Returns:
-      * a non-empty list — explicit ``--court`` wins, else the enabled subset;
-      * ``None`` — search everywhere (no scope file, or every court enabled);
+      * a non-empty list - explicit ``--court`` wins, else the enabled subset;
+      * ``None`` - search everywhere (no scope file, or every court enabled);
     and **raises** ``ScopeError`` when courts.csv disables every court, so an
     empty scope fails closed instead of silently widening to nationwide.
     """

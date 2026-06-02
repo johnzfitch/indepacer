@@ -87,7 +87,7 @@ class TestAgentRefusals:
 
     def test_matter_supplied_passes_gate(self):
         # With --matter, the matter requirement is satisfied; failure (if any)
-        # must NOT be MATTER_REQUIRED. (Network call may fail later — fine.)
+        # must NOT be MATTER_REQUIRED. (Network call may fail later - fine.)
         _write_policy("Setting,Value\nRequire client/matter code,Yes\n")
         r = self._invoke("--matter", "M-1", "pcl", "cases", "-n", "1:20-cv-1")
         if r.exit_code == 3:

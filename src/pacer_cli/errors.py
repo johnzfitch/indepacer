@@ -34,7 +34,7 @@ ERRORS = {
         message="policy.csv requires a client/matter code for billable operations.",
         suggestions=[
             "Add: [cyan]--matter MATTER-1234[/]",
-            "Or set a default via [cyan]pacer auth login --client-code …[/]",
+            "Or set a default via [cyan]pacer auth login --client-code ...[/]",
         ],
     ),
     "policy_invalid": ErrorContext(

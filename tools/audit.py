@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dangling-code audit — complements pyflakes.
+"""Dangling-code audit - complements pyflakes.
 
 pyflakes finds *unused* names; this finds *wired-but-incomplete* code that
 pyflakes is blind to:
@@ -8,7 +8,7 @@ pyflakes is blind to:
   * exception handlers that swallow errors silently (``except ...: pass``)
     without an explanatory comment.
 
-Stubs fail the run (exit 1) — they are pure surface and should be gutted or
+Stubs fail the run (exit 1) - they are pure surface and should be gutted or
 finished. Silently-swallowed excepts are reported as warnings so a human can
 confirm each is intentional (add a one-line comment to clear it).
 
@@ -104,7 +104,7 @@ def main(argv: list[str]) -> int:
         print(f"ERROR {s}")
 
     if all_stubs:
-        print(f"\n{len(all_stubs)} stub(s) found — gut or finish them.")
+        print(f"\n{len(all_stubs)} stub(s) found - gut or finish them.")
         return 1
     print(f"audit clean: {len(files)} files, {len(all_swallows)} swallowed-except warning(s).")
     return 0
