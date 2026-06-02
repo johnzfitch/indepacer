@@ -28,6 +28,10 @@ def _clean_env(monkeypatch, tmp_path):
     monkeypatch.setattr(_cfg, "PACER_ROOT", tmp_path / ".pacer")
     monkeypatch.setattr(_cfg, "CONFIG_FILE", tmp_path / ".config" / "pacer-cli" / "config.env")
     monkeypatch.setattr(_cfg, "CONTEXT_FILE", tmp_path / ".config" / "pacer-cli" / "context.json")
+    monkeypatch.setattr(_cfg, "POLICY_CSV", tmp_path / ".pacer" / "config" / "policy.csv")
+    # Spend governance: redirect the audit log + policy/courts CSVs off real home.
+    import pacer_cli.security as _sec
+    monkeypatch.setattr(_sec, "LOG_DIR", tmp_path / ".pacer" / "logs")
     # Clear any PACER_ env vars that could leak into PacerConfig
     for key in list(os.environ):
         if key.startswith("PACER_"):

@@ -32,6 +32,9 @@ jobs:
       - name: Lint with ruff
         run: ruff check src/
 
+      - name: Dangling-code audit (stubs + swallowed excepts)
+        run: python tools/audit.py
+
       - name: Run tests
         run: pytest tests/ -v --tb=short
 

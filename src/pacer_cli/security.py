@@ -21,10 +21,13 @@ import ssl
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Literal, Optional
+from typing import TYPE_CHECKING, Iterator, Literal, Optional
+
+if TYPE_CHECKING:
+    from .config import PacerConfig
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -197,7 +200,7 @@ def show_peak_hours_warning(entry_count: int = 0) -> None:
             )
         console.print(Panel(msg, title="[yellow]Peak Hours[/]", border_style="yellow"))
     except ImportError:
-        pass
+        pass  # rich not installed -> skip the cosmetic peak-hours panel
 
 
 # ---------------------------------------------------------------------------
@@ -208,8 +211,9 @@ def show_peak_hours_warning(entry_count: int = 0) -> None:
 class AuditLogger:
     """Append-only audit log for PACER operations."""
 
-    def __init__(self, log_dir: Path = LOG_DIR):
-        self.log_dir = log_dir
+    def __init__(self, log_dir: Optional[Path] = None):
+        # Resolve LOG_DIR at call time (not import) so tests can redirect it.
+        self.log_dir = log_dir if log_dir is not None else LOG_DIR
         self._logger: Optional[logging.Logger] = None
 
     def _ensure_logger(self) -> logging.Logger:
@@ -220,9 +224,13 @@ class AuditLogger:
             self._logger.setLevel(logging.INFO)
             if not self._logger.handlers:
                 handler = logging.FileHandler(log_file, encoding="utf-8")
-                handler.setFormatter(
-                    logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ")
+                formatter = logging.Formatter(
+                    "%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ"
                 )
+                # Emit timestamps in true UTC so the trailing "Z" is honest and
+                # spend_today() can bucket lines by UTC calendar day.
+                formatter.converter = time.gmtime
+                handler.setFormatter(formatter)
                 self._logger.addHandler(handler)
         return self._logger
 
@@ -233,6 +241,7 @@ class AuditLogger:
         status_code: Optional[int] = None,
         cost: float = 0.0,
         error: Optional[str] = None,
+        client_code: Optional[str] = None,
     ) -> None:
         logger = self._ensure_logger()
         parts = [f"{method} {url}"]
@@ -240,6 +249,8 @@ class AuditLogger:
             parts.append(f"status={status_code}")
         if cost > 0:
             parts.append(f"cost=${cost:.2f}")
+        if client_code:
+            parts.append(f"client={client_code}")
         if error:
             parts.append(f"error={error}")
         logger.info(" | ".join(parts))
@@ -251,12 +262,16 @@ class AuditLogger:
         size_bytes: int,
         pages: int = 0,
         cost: float = 0.0,
+        client_code: Optional[str] = None,
     ) -> None:
         logger = self._ensure_logger()
-        logger.info(
+        line = (
             f"DOWNLOAD {url} -> {filepath} | "
             f"size={size_bytes} pages={pages} cost=${cost:.2f}"
         )
+        if client_code:
+            line += f" | client={client_code}"
+        logger.info(line)
 
 
 _audit_logger: Optional[AuditLogger] = None
@@ -270,9 +285,105 @@ def get_audit_logger() -> AuditLogger:
 
 
 def reset_audit_logger() -> None:
-    """Reset global audit logger (for test isolation)."""
+    """Reset global audit logger (for test isolation).
+
+    Also detaches handlers from the shared ``pacer.audit`` logging.Logger so a
+    redirected LOG_DIR (e.g. a fresh temp dir per test) takes effect instead of
+    a stale FileHandler pointing at a previous directory.
+    """
     global _audit_logger
     _audit_logger = None
+    logger = logging.getLogger("pacer.audit")
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
+
+
+# ---------------------------------------------------------------------------
+# Spend governance — preventive cap, summed from the audit log
+# ---------------------------------------------------------------------------
+
+
+class GovernanceError(Exception):
+    """Base for preventive spend-cap refusals (CLI exits 3 on these)."""
+
+    error_key: str = "budget_exceeded"
+
+    def __init__(self, message: str, **fields: object) -> None:
+        super().__init__(message)
+        self.fields = fields
+
+
+class BudgetError(GovernanceError):
+    """A per-op or daily spend cap would be exceeded."""
+
+    error_key = "budget_exceeded"
+
+
+class MatterRequired(GovernanceError):
+    """policy.csv requires a client/matter code for billable operations."""
+
+    error_key = "matter_required"
+
+
+def spend_today(client_code: Optional[str] = None) -> float:
+    """Sum today's billed cost (UTC calendar day) from the current audit log.
+
+    Reads the same append-only log AuditLogger writes — no separate store. Uses
+    the ``cost=$N`` token each billable call records. When ``client_code`` is
+    given, only lines tagged ``client=<code>`` are counted.
+    """
+    log_file = LOG_DIR / f"audit-{datetime.now(timezone.utc):%Y-%m}.log"
+    if not log_file.exists():
+        return 0.0
+    today = f"{datetime.now(timezone.utc):%Y-%m-%d}"
+    total = 0.0
+    for line in log_file.read_text(encoding="utf-8").splitlines():
+        if not line.startswith(today) or "cost=$" not in line:
+            continue
+        if client_code is not None and f"client={client_code}" not in line:
+            continue
+        try:
+            total += float(line.split("cost=$")[1].split()[0])
+        except (IndexError, ValueError):
+            continue
+    return round(total, 2)
+
+
+def check_spend(
+    config: "PacerConfig",
+    estimated_cost: float,
+    *,
+    prior_spend: float,
+    client_code: Optional[str] = None,
+) -> None:
+    """Pure, side-effect-free preventive cap check.
+
+    Raises a :class:`GovernanceError` subclass when ``estimated_cost`` would
+    breach a cap; returns ``None`` when the operation is within policy. Ctx-free
+    so both the CLI gate and the MCP server share one enforcement path.
+
+    ``config`` is duck-typed (reads ``require_client_code``/``per_op_cap_usd``/
+    ``daily_cap_usd``) to avoid a ``config <-> security`` import cycle.
+    """
+    if config.require_client_code and not client_code:
+        raise MatterRequired(
+            "a client/matter code is required for billable operations",
+            client_code=client_code,
+        )
+    if estimated_cost > config.per_op_cap_usd:
+        raise BudgetError(
+            "operation exceeds the per-operation spend cap",
+            estimated=round(estimated_cost, 2),
+            per_op_cap=config.per_op_cap_usd,
+        )
+    if prior_spend + estimated_cost > config.daily_cap_usd:
+        raise BudgetError(
+            "operation would exceed the daily spend cap",
+            estimated=round(estimated_cost, 2),
+            spent_today=round(prior_spend, 2),
+            daily_cap=config.daily_cap_usd,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +426,7 @@ class StreamingDownload:
             try:
                 self.response.close()
             except OSError:
-                pass
+                pass  # best-effort cleanup; socket already broken is harmless
             self._closed = True
 
     def __enter__(self) -> "StreamingDownload":
@@ -362,7 +473,7 @@ def safe_response_content(response: requests.Response, max_size: int = MAX_MEMOR
                     f"Response Content-Length {content_length} exceeds limit {max_size}"
                 )
         except ValueError:
-            pass
+            pass  # non-integer Content-Length -> fall through to chunked reads
 
     # Use chunked read to enforce limit
     chunks: list[bytes] = []

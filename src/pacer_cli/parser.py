@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
 
 try:
     from selectolax.parser import HTMLParser
@@ -19,8 +18,6 @@ except ImportError:
 from .docket_types import (
     DocketMeta,
     DocketEntry,
-    Party,
-    Attorney,
     ParsedDocket,
 )
 

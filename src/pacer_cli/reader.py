@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 # Import shared types
-from .docket_types import ParsedDocket, DocketMeta, DocketEntry, Party, Attorney
+from .docket_types import ParsedDocket
 
 # Optional BeautifulSoup for fallback/legacy support
 try:
@@ -776,48 +776,3 @@ class DocketProcessor:
                 writer = csv.writer(f, dialect="excel")
                 writer.writerow(csv_headers)
                 writer.writerows(rows)
-
-
-class DocumentSorter:
-    """
-    Document sorting functionality.
-
-    Not yet implemented.
-    """
-
-    def __init__(
-        self,
-        docket_path: str | Path = "./results/local_docket_archive",
-        document_path: str | Path = "./results/local_document_archive",
-        output_path: str | Path = "./results",
-        searchable_criteria: str = "court",
-    ) -> None:
-        self.docket_path = Path(docket_path)
-        self.document_path = Path(document_path)
-        self.searchable_criteria = searchable_criteria
-        self.file_index: dict[str, Any] = {}
-        self.flags: list[str] = []
-
-    def convert_pdf_to_text(self, filename: str) -> None:
-        """Convert a PDF file to text. Not implemented."""
-        pass
-
-    def convert_all(self, overwrite: bool = False) -> None:
-        """Convert all PDFs to text. Not implemented."""
-        pass
-
-    def set_flag(self) -> None:
-        """Add a flagging criteria. Not implemented."""
-        pass
-
-    def flag_searchable(self) -> None:
-        """Flag documents based on criteria. Not implemented."""
-        pass
-
-    def count(self) -> None:
-        """Count the file index. Not implemented."""
-        pass
-
-    def export_file_index(self) -> None:
-        """Export file index to file. Not implemented."""
-        pass
