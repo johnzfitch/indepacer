@@ -16,6 +16,7 @@ from rich.table import Table
 from .config import (
     ContextConfig,
     PacerConfig,
+    PolicyError,
     apply_policy_csv,
     check_legacy_archive,
     clear_credentials,
@@ -202,7 +203,7 @@ def enforce_spend(
     # billable ops (here) while read-only commands never reach this gate.
     try:
         apply_policy_csv(config)
-    except ValueError as exc:
+    except PolicyError as exc:
         return _deny(ctx, "policy_invalid", operation, reason=str(exc))
 
     effective_code = client_code or config.client_code
@@ -240,8 +241,11 @@ def record_spend(
     config: PacerConfig = ctx.obj["config"]
     logger = get_audit_logger()
     if pages:
+        # log_download formats "DOWNLOAD {url} -> {filepath}"; pass the human
+        # label as the source and the saved path (in `url`) as the destination,
+        # so the line reads "DOWNLOAD <operation> -> <path>".
         logger.log_download(
-            url, Path(operation), size_bytes=0, pages=pages,
+            operation, Path(url), size_bytes=0, pages=pages,
             cost=cost, client_code=config.client_code,
         )
     else:
@@ -1967,6 +1971,10 @@ def pcl_cases(
 
     # Explicit --court wins; otherwise apply the courts.csv scope (None=nationwide).
     scoped_courts = list(court) if court else enabled_court_ids()
+    # An explicit empty scope (courts.csv with everything disabled) must refuse,
+    # not fall through to a nationwide search (empty lists are dropped downstream).
+    if scoped_courts == []:
+        return _deny(ctx, "scope_empty", "Search cases")
 
     # Build search criteria
     criteria = CaseSearchCriteria(
@@ -2266,6 +2274,9 @@ def pcl_parties(
 
     # Explicit --court wins; otherwise apply the courts.csv scope (None=nationwide).
     scoped_courts = list(court) if court else enabled_court_ids()
+    # An explicit empty scope (all courts disabled) refuses rather than fail open.
+    if scoped_courts == []:
+        return _deny(ctx, "scope_empty", "Search parties")
 
     # Build case filter criteria
     case_criteria = None

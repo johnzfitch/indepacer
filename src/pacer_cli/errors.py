@@ -45,6 +45,15 @@ ERRORS = {
             "Dollar caps must be plain numbers, e.g. [cyan]5.00[/]",
         ],
     ),
+    "scope_empty": ErrorContext(
+        title="No Courts In Scope",
+        message="courts.csv disables every court, so this search has no courts to run against (refused fail-closed instead of searching nationwide).",
+        suggestions=[
+            "Enable at least one court: [cyan]pacer courts enable cand nysd[/]",
+            "Or clear the scope to search nationwide: [cyan]pacer courts enable-all[/]",
+            "Or pass courts explicitly: [cyan]--court cand[/]",
+        ],
+    ),
     "auth_missing": ErrorContext(
         title="Credentials Not Configured",
         message="PACER credentials are required for this operation.",

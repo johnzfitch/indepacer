@@ -326,6 +326,13 @@ class MatterRequired(GovernanceError):
     error_key = "matter_required"
 
 
+class ScopeError(GovernanceError):
+    """courts.csv is present but disables every court — refuse rather than
+    silently search nationwide (fail-closed)."""
+
+    error_key = "scope_empty"
+
+
 def spend_today(client_code: Optional[str] = None) -> float:
     """Sum today's billed cost (UTC calendar day) from the current audit log.
 
@@ -341,8 +348,12 @@ def spend_today(client_code: Optional[str] = None) -> float:
     for line in log_file.read_text(encoding="utf-8").splitlines():
         if not line.startswith(today) or "cost=$" not in line:
             continue
-        if client_code is not None and f"client={client_code}" not in line:
-            continue
+        if client_code is not None:
+            # Exact field match on the " | "-delimited log so one client code
+            # can't match another it's a prefix of (e.g. M-1 vs M-10).
+            tokens = [t.strip() for t in line.split("|")]
+            if f"client={client_code}" not in tokens:
+                continue
         try:
             total += float(line.split("cost=$")[1].split()[0])
         except (IndexError, ValueError):
