@@ -925,37 +925,6 @@ text = parse_docket_file(Path("docket.html"), "compact")
 
 ---
 
-## MCP Server (for AI agents)
-
-PACER, exposed over the [Model Context Protocol](https://modelcontextprotocol.io) - the
-governed client behind a tool interface. Every billable tool routes through the **same
-preventive cap** as the CLI and writes the same audit line, so an MCP-driven agent obeys
-one cap and leaves one trail. A read-only `spend_status` tool/resource lets the agent see
-its remaining budget.
-
-```bash
-pip install -e '.[mcp]'     # optional extra; keeps the core CLI dependency-light
-pacer-mcp                   # runs a local stdio server (bring your own credentials)
-```
-
-Register it with a desktop MCP client (e.g. Claude Desktop `claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "pacer": { "command": "pacer-mcp" }
-  }
-}
-```
-
-Tools: `search_cases`, `search_parties`, `get_docket`, `get_document` (all billable, all
-capped) and `spend_status` (read-only). A cap breach returns a structured error mirroring
-the CLI's JSON. Same invariants: credentials are human-provisioned (env / `config.env`);
-the server never prompts, never auto-unlocks the vault, and never writes `policy.csv` /
-`courts.csv`.
-
----
-
 ## ![warning](icons/warning.png) Costs
 
 PACER charges per page viewed:
