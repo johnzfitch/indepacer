@@ -10,6 +10,7 @@ import pacer_cli.security as sec
 from pacer_cli.config import PacerConfig
 from pacer_cli.security import (
     BudgetError,
+    MatterInvalid,
     MatterRequired,
     check_spend,
     get_audit_logger,
@@ -104,3 +105,14 @@ class TestCheckSpend:
             check_spend(cfg, 0.10, prior_spend=0.0, client_code=None)
         # With a code it passes.
         assert check_spend(cfg, 0.10, prior_spend=0.0, client_code="M-1") is None
+
+    def test_matter_code_injection_rejected(self):
+        # A code that could forge/corrupt the " | "-delimited audit ledger or the
+        # X-CLIENT-CODE header must be refused before any billable op (S1).
+        cfg = self._cfg()
+        for bad in ("M-1 | cost=$0.00", "M\n1", "x" * 33, "a|b"):
+            with pytest.raises(MatterInvalid):
+                check_spend(cfg, 0.10, prior_spend=0.0, client_code=bad)
+        # Ordinary matter codes still pass.
+        for ok in ("MATTER-1234", "3:1991cv01867", "ABC_123/4"):
+            assert check_spend(cfg, 0.10, prior_spend=0.0, client_code=ok) is None

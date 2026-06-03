@@ -17,6 +17,7 @@ Addresses all issues from PR #1 and PR #2:
 from __future__ import annotations
 
 import logging
+import re
 import ssl
 import threading
 import time
@@ -333,6 +334,27 @@ class ScopeError(GovernanceError):
     error_key = "scope_empty"
 
 
+class MatterInvalid(GovernanceError):
+    """The client/matter code contains unsafe characters or is too long.
+
+    The code is written verbatim into the audit line that doubles as the spend
+    ledger (` | `-delimited) and is sent as the X-CLIENT-CODE header, so a code
+    with a newline/pipe/control char could forge or corrupt ledger rows. Reject
+    it up front (fail-closed) before it reaches either."""
+
+    error_key = "matter_invalid"
+
+
+# PACER client codes are short; allow alphanumerics + a few common separators,
+# capped at 32 chars. Anything else (newline, '|', control chars) is rejected.
+_MATTER_CODE_RE = re.compile(r"^[A-Za-z0-9 ._/#:-]{1,32}$")
+
+
+def is_valid_matter_code(code: str) -> bool:
+    """True if ``code`` is a safe client/matter code (see _MATTER_CODE_RE)."""
+    return bool(_MATTER_CODE_RE.match(code))
+
+
 def spend_today(client_code: Optional[str] = None) -> float:
     """Sum today's billed cost (UTC calendar day) from the current audit log.
 
@@ -381,6 +403,11 @@ def check_spend(
     if config.require_client_code and not client_code:
         raise MatterRequired(
             "a client/matter code is required for billable operations",
+            client_code=client_code,
+        )
+    if client_code and not is_valid_matter_code(client_code):
+        raise MatterInvalid(
+            "client/matter code has unsafe characters or exceeds 32 chars",
             client_code=client_code,
         )
     if estimated_cost > config.per_op_cap_usd:

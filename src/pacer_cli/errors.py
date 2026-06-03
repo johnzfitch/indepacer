@@ -45,6 +45,14 @@ ERRORS = {
             "Dollar caps must be plain numbers, e.g. [cyan]5.00[/]",
         ],
     ),
+    "matter_invalid": ErrorContext(
+        title="Invalid Client/Matter Code",
+        message="The client/matter code has unsafe characters or is too long (max 32).",
+        suggestions=[
+            "Use letters, digits, spaces, or [cyan]. _ / # : -[/] only",
+            "PACER client codes are short identifiers, e.g. [cyan]MATTER-1234[/]",
+        ],
+    ),
     "scope_empty": ErrorContext(
         title="No Courts In Scope",
         message="courts.csv disables every court, so this search has no courts to run against (refused fail-closed instead of searching nationwide).",
