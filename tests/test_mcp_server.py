@@ -42,6 +42,16 @@ class TestSpendStatus:
         assert s["daily_cap"] == 2.00
         assert s["spent_today"] == 0.50
         assert s["remaining_today"] == 1.50
+        assert "policy_error" not in s
+
+    def test_readonly_survives_bad_policy(self):
+        # A fat-fingered policy.csv must NOT take down the read-only status view;
+        # only billable ops fail closed. Report conservative defaults + the error.
+        _write_policy("Setting,Value\nMax spend per search ($),fifty\n")
+        s = mcp.spend_status()
+        assert s["per_op_cap"] == 1.00  # conservative built-in default
+        assert s["daily_cap"] == 10.00
+        assert "fifty" in s["policy_error"]
 
 
 class TestSearchGovernance:

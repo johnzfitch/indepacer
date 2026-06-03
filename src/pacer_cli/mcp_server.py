@@ -59,10 +59,19 @@ def _guard(cfg: PacerConfig, operation: str, estimated_cost: float) -> None:
 
 
 def _audit(cfg: PacerConfig, url: str, cost: float) -> None:
+    """Record a billable *search* (request line), matching the CLI ledger."""
     if cost > 0:
         get_audit_logger().log_request(
             "POST", url, status_code=200, cost=cost, client_code=cfg.client_code
         )
+
+
+def _audit_download(cfg: PacerConfig, label: str, path: str, pages: int, cost: float) -> None:
+    """Record a billable *download* via log_download (with page count), matching
+    the CLI ledger. Always writes the cost=$ token, even at $0.00."""
+    get_audit_logger().log_download(
+        label, path, size_bytes=0, pages=pages, cost=cost, client_code=cfg.client_code
+    )
 
 
 def error_payload(operation: str, exc: Exception) -> dict[str, Any]:
@@ -82,16 +91,31 @@ def error_payload(operation: str, exc: Exception) -> dict[str, Any]:
 
 
 def spend_status() -> dict[str, Any]:
-    """Today's spend vs. the active caps - a read-only budget view (no billing)."""
-    cfg = _load_config()
+    """Today's spend vs. the active caps - a read-only budget view (no billing).
+
+    Read-only, so it must stay available even when policy.csv is fat-fingered
+    (only *billable* ops fail closed on a bad policy). On a parse error it reports
+    the conservative built-in caps plus a ``policy_error`` field, rather than
+    refusing.
+    """
+    cfg = get_config()  # base config; never raises
+    policy_error: Optional[str] = None
+    try:
+        apply_policy_csv(cfg)
+    except PolicyError as exc:
+        policy_error = str(exc)
+        cfg = get_config()  # discard any partial overlay; report safe defaults
     spent = spend_today()
-    return {
+    status: dict[str, Any] = {
         "spent_today": spent,
         "per_op_cap": cfg.per_op_cap_usd,
         "daily_cap": cfg.daily_cap_usd,
         "remaining_today": round(max(0.0, cfg.daily_cap_usd - spent), 2),
         "require_client_code": cfg.require_client_code,
     }
+    if policy_error is not None:
+        status["policy_error"] = policy_error
+    return status
 
 
 def search_cases(
@@ -171,8 +195,9 @@ def get_docket(
     if not result.success:
         raise RuntimeError(result.error or "docket download failed")
     cost = float(result.cost or 0.0)
-    _audit(cfg, f"docket {court_normalized}/{case_number}", cost)
-    return {"path": str(result.filepath), "pages": int(result.pages or 0), "cost": cost}
+    pages = int(result.pages or 0)
+    _audit_download(cfg, f"docket {court_normalized}/{case_number}", str(result.filepath), pages, cost)
+    return {"path": str(result.filepath), "pages": pages, "cost": cost}
 
 
 def get_document(
@@ -194,8 +219,9 @@ def get_document(
     if not result.success:
         raise RuntimeError(result.error or "document download failed")
     cost = float(result.cost or 0.0)
-    _audit(cfg, f"document {doc_number}", cost)
-    return {"path": str(result.filepath), "pages": int(result.pages or 0), "cost": cost}
+    pages = int(result.pages or 0)
+    _audit_download(cfg, f"document {doc_number}", str(result.filepath), pages, cost)
+    return {"path": str(result.filepath), "pages": pages, "cost": cost}
 
 
 # ---------------------------------------------------------------------------
