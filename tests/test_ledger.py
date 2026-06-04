@@ -116,3 +116,42 @@ class TestCheckSpend:
         # Ordinary matter codes still pass.
         for ok in ("MATTER-1234", "3:1991cv01867", "ABC_123/4"):
             assert check_spend(cfg, 0.10, prior_spend=0.0, client_code=ok) is None
+
+
+class TestSpendLock:
+    """The cross-process/-thread lock that closes the check-then-act TOCTOU."""
+
+    def test_is_reentrant_same_thread(self):
+        # Nested acquisition in one thread must not deadlock (RLock).
+        with sec.spend_lock(timeout=2):
+            with sec.spend_lock(timeout=2):
+                pass
+
+    def test_serializes_threads(self):
+        # While one thread holds the lock, another must wait (not run concurrently).
+        import threading
+        import time
+
+        order = []
+        holder_in = threading.Event()
+
+        def holder():
+            with sec.spend_lock(timeout=5):
+                holder_in.set()
+                order.append("holder-start")
+                time.sleep(0.3)
+                order.append("holder-end")
+
+        def waiter():
+            holder_in.wait()
+            with sec.spend_lock(timeout=5):
+                order.append("waiter")
+
+        th = threading.Thread(target=holder)
+        tw = threading.Thread(target=waiter)
+        th.start()
+        tw.start()
+        th.join()
+        tw.join()
+        # The waiter must only enter after the holder fully released.
+        assert order == ["holder-start", "holder-end", "waiter"], order

@@ -26,6 +26,7 @@ from .security import (
     GovernanceError,
     check_spend,
     get_audit_logger,
+    spend_lock,
     spend_today,
 )
 
@@ -51,13 +52,11 @@ def _load_config(client_code: Optional[str] = None) -> PacerConfig:
 def _guard(cfg: PacerConfig, operation: str, estimated_cost: float) -> None:
     """Run the preventive cap. Raises GovernanceError on a breach.
 
-    Note: there is an inherent check-then-act gap between this guard and the
-    subsequent ``_audit`` / ``_audit_download`` call (the network request runs
-    between them). Two concurrent tool calls could both pass the guard if the
-    combined cost would only exceed the cap after both are recorded. This matches
-    the CLI's behaviour — the cap is preventive, not a hard atomic guarantee for
-    the last fraction of the budget. In practice the MCP stdio server is
-    single-threaded per connection; the gap is documented here for completeness.
+    The check-then-act gap (the network request runs between this guard and the
+    subsequent ``_audit`` / ``_audit_download``) is closed by the caller holding
+    :func:`security.spend_lock` across the whole read-check-bill-record section,
+    so two concurrent ops can't both pass the cap on the same "spent today".
+    This guard must therefore be called inside ``spend_lock()``.
     """
     check_spend(
         cfg,
@@ -143,10 +142,13 @@ def search_cases(
     if not criteria.to_api_dict():
         raise ValueError("at least one search criterion is required")
 
-    _guard(cfg, "search cases", COST_PER_PAGE)
-    response = PCLClient(cfg).search_cases(criteria)
-    fee = float(response.receipt.search_fee) if response.receipt and response.receipt.search_fee else 0.0
-    _audit(cfg, "POST /cases/find", fee)
+    # One locked critical section: read spend -> check -> bill -> record, so a
+    # concurrent op can't also pass the cap on the same "spent today".
+    with spend_lock():
+        _guard(cfg, "search cases", COST_PER_PAGE)
+        response = PCLClient(cfg).search_cases(criteria)
+        fee = float(response.receipt.search_fee) if response.receipt and response.receipt.search_fee else 0.0
+        _audit(cfg, "POST /cases/find", fee)
     return {
         "cost": fee,
         "count": len(response.content),
@@ -173,10 +175,11 @@ def search_parties(
     if not criteria.to_api_dict():
         raise ValueError("at least one search criterion is required")
 
-    _guard(cfg, "search parties", COST_PER_PAGE)
-    response = PCLClient(cfg).search_parties(criteria)
-    fee = float(response.receipt.search_fee) if response.receipt and response.receipt.search_fee else 0.0
-    _audit(cfg, "POST /parties/find", fee)
+    with spend_lock():
+        _guard(cfg, "search parties", COST_PER_PAGE)
+        response = PCLClient(cfg).search_parties(criteria)
+        fee = float(response.receipt.search_fee) if response.receipt and response.receipt.search_fee else 0.0
+        _audit(cfg, "POST /parties/find", fee)
     return {
         "cost": fee,
         "count": len(response.content),
@@ -197,15 +200,16 @@ def get_docket(
     case_dir = cfg.get_case_dir(court_normalized, case_number)
     case_dir.mkdir(parents=True, exist_ok=True)
 
-    _guard(cfg, "download docket", 5 * COST_PER_PAGE)
-    result = DocketDownloader(cfg).download_docket_by_case_number(
-        case_number, court_id, case_dir, filename="docket.html"
-    )
-    if not result.success:
-        raise RuntimeError(result.error or "docket download failed")
-    cost = float(result.cost or 0.0)
-    pages = int(result.pages or 0)
-    _audit_download(cfg, f"docket {court_normalized}/{case_number}", str(result.filepath), pages, cost)
+    with spend_lock():
+        _guard(cfg, "download docket", 5 * COST_PER_PAGE)
+        result = DocketDownloader(cfg).download_docket_by_case_number(
+            case_number, court_id, case_dir, filename="docket.html"
+        )
+        if not result.success:
+            raise RuntimeError(result.error or "docket download failed")
+        cost = float(result.cost or 0.0)
+        pages = int(result.pages or 0)
+        _audit_download(cfg, f"docket {court_normalized}/{case_number}", str(result.filepath), pages, cost)
     return {"path": str(result.filepath), "pages": pages, "cost": cost}
 
 
@@ -221,15 +225,16 @@ def get_document(
     out_dir = cfg.document_archive.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    _guard(cfg, "download document", 10 * COST_PER_PAGE)
-    result = DocumentDownloader(cfg).download_document(
-        doc_link, out_dir, f"doc{doc_number}.pdf"
-    )
-    if not result.success:
-        raise RuntimeError(result.error or "document download failed")
-    cost = float(result.cost or 0.0)
-    pages = int(result.pages or 0)
-    _audit_download(cfg, f"document {doc_number}", str(result.filepath), pages, cost)
+    with spend_lock():
+        _guard(cfg, "download document", 10 * COST_PER_PAGE)
+        result = DocumentDownloader(cfg).download_document(
+            doc_link, out_dir, f"doc{doc_number}.pdf"
+        )
+        if not result.success:
+            raise RuntimeError(result.error or "document download failed")
+        cost = float(result.cost or 0.0)
+        pages = int(result.pages or 0)
+        _audit_download(cfg, f"document {doc_number}", str(result.filepath), pages, cost)
     return {"path": str(result.filepath), "pages": pages, "cost": cost}
 
 

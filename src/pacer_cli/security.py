@@ -437,6 +437,75 @@ def check_spend(
         )
 
 
+class SpendLockTimeout(GovernanceError):
+    """Could not acquire the spend lock in time — refuse rather than risk a
+    concurrent overspend (fail-closed)."""
+
+    error_key = "spend_locked"
+
+
+# Serializes the read-check-record critical section so two concurrent billable
+# ops can't both read the same "spent today", both pass the cap, and both bill
+# (a check-then-act TOCTOU). In-process threading.Lock covers threads; an flock
+# on a sibling lockfile covers separate processes / MCP connections sharing one
+# ~/.pacer. The lock is held across the network op, so the cap is a hard cap
+# under concurrency at the cost of serializing concurrent billable ops.
+_spend_thread_lock = threading.RLock()  # reentrant: same-thread nesting won't deadlock
+_spend_depth = 0  # per-process reentrancy depth (guarded by _spend_thread_lock)
+_spend_fd = None  # the flock'd fd, held while depth > 0
+SPEND_LOCKFILE = LOG_DIR / ".spend.lock"
+
+
+@contextmanager
+def spend_lock(timeout: float = 30.0) -> "Iterator[None]":
+    """Hold the cross-process + in-process spend lock for a billable op.
+
+    Reentrant within a process: the cross-process flock is taken only on the
+    outermost acquire (a second fd would self-conflict). Acquire is bounded by
+    ``timeout``; on timeout we raise (fail-closed) rather than proceed
+    unserialized. The OS releases the flock if the process dies mid-op."""
+    global _spend_depth, _spend_fd
+    deadline = time.monotonic() + timeout
+    if not _spend_thread_lock.acquire(timeout=timeout):
+        raise SpendLockTimeout("timed out acquiring the in-process spend lock")
+    try:
+        if _spend_depth == 0:
+            try:
+                import fcntl  # POSIX only; absent on Windows -> in-process lock only
+            except ImportError:
+                fcntl = None
+            if fcntl is not None:
+                SPEND_LOCKFILE.parent.mkdir(parents=True, exist_ok=True)
+                fd = open(SPEND_LOCKFILE, "w")
+                while True:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except OSError:
+                        if time.monotonic() > deadline:
+                            fd.close()
+                            raise SpendLockTimeout(
+                                "timed out acquiring the cross-process spend lock"
+                            )
+                        time.sleep(0.05)
+                _spend_fd = fd
+        _spend_depth += 1
+        try:
+            yield
+        finally:
+            _spend_depth -= 1
+            if _spend_depth == 0 and _spend_fd is not None:
+                try:
+                    import fcntl
+                    fcntl.flock(_spend_fd, fcntl.LOCK_UN)
+                except Exception:
+                    pass  # best-effort; close()/process-exit releases it anyway
+                _spend_fd.close()
+                _spend_fd = None
+    finally:
+        _spend_thread_lock.release()
+
+
 # ---------------------------------------------------------------------------
 # Streaming Download
 # ---------------------------------------------------------------------------

@@ -172,7 +172,51 @@ class TestConcurrency:
             f"Expected 1 handler, got {len(inner.handlers)} — duplicate handler race"
         )
 
-    def test_check_then_act_gap_documented_in_guard(self):
-        """_guard's docstring explicitly acknowledges the check-then-act gap."""
-        assert "check-then-act" in mcp._guard.__doc__
+    def test_check_then_act_gap_closed_by_spend_lock(self):
+        """The check-then-act gap is closed by holding spend_lock across the
+        critical section; concurrent threads must not both pass the cap."""
+        import threading
+
+        from pacer_cli.security import GovernanceError
+
+        # _guard documents that it must run inside spend_lock().
+        assert "spend_lock" in mcp._guard.__doc__
+
+        # Daily cap of $0.10 allows exactly one $0.10 search. Two threads race;
+        # the lock must serialize them so the second sees the first's spend.
+        _write_policy("Setting,Value\nMax spend per search ($),1.00\nMax spend per day ($),0.10\n")
+        import pacer_cli.pcl as pcl_mod
+
+        def _fake(cfg):
+            return SimpleNamespace(
+                search_cases=lambda criteria, **k: _FakeResult(0.10),
+            )
+
+        # Use the real spend_lock + ledger; only the network is faked.
+        import pacer_cli.security as sec
+        orig = pcl_mod.PCLClient
+        pcl_mod.PCLClient = _fake
+        try:
+            outcomes: list = []
+
+            def _run():
+                try:
+                    mcp.search_cases(case_number="1:20-cv-1")
+                    outcomes.append("ok")
+                except GovernanceError:
+                    outcomes.append("refused")
+                except Exception as exc:  # pragma: no cover - defensive
+                    outcomes.append(f"err:{exc}")
+
+            threads = [threading.Thread(target=_run) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        finally:
+            pcl_mod.PCLClient = orig
+
+        # Exactly one billed; the other was refused by the cap (never both).
+        assert sorted(outcomes) == ["ok", "refused"], outcomes
+        assert sec.spend_today() == 0.10
 
