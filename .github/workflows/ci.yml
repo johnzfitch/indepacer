@@ -40,8 +40,8 @@ jobs:
       - name: Dangling-code audit (stubs + swallowed excepts)
         run: python tools/audit.py
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+      - name: Run tests (with coverage)
+        run: pytest tests/ -v --tb=short --cov=pacer_cli --cov-report=term-missing --cov-report=xml
 
       - name: Run security review tests
         run: pytest tests/test_security_review.py -v
