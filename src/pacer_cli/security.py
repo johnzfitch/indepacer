@@ -216,14 +216,22 @@ class AuditLogger:
         # Resolve LOG_DIR at call time (not import) so tests can redirect it.
         self.log_dir = log_dir if log_dir is not None else LOG_DIR
         self._logger: Optional[logging.Logger] = None
+        self._init_lock = threading.Lock()
 
     def _ensure_logger(self) -> logging.Logger:
-        if self._logger is None:
+        # Fast path - already initialised (no lock needed after first setup).
+        if self._logger is not None:
+            return self._logger
+        with self._init_lock:
+            # Re-check under the lock: another thread may have set _logger
+            # while we were waiting.
+            if self._logger is not None:
+                return self._logger
             self.log_dir.mkdir(parents=True, exist_ok=True)
             log_file = self.log_dir / f"audit-{datetime.now(timezone.utc):%Y-%m}.log"
-            self._logger = logging.getLogger("pacer.audit")
-            self._logger.setLevel(logging.INFO)
-            if not self._logger.handlers:
+            logger = logging.getLogger("pacer.audit")
+            logger.setLevel(logging.INFO)
+            if not logger.handlers:
                 handler = logging.FileHandler(log_file, encoding="utf-8")
                 formatter = logging.Formatter(
                     "%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ"
@@ -232,7 +240,8 @@ class AuditLogger:
                 # spend_today() can bucket lines by UTC calendar day.
                 formatter.converter = time.gmtime
                 handler.setFormatter(formatter)
-                self._logger.addHandler(handler)
+                logger.addHandler(handler)
+            self._logger = logger
         return self._logger
 
     def log_request(
@@ -276,13 +285,15 @@ class AuditLogger:
 
 
 _audit_logger: Optional[AuditLogger] = None
+_audit_logger_lock = threading.Lock()
 
 
 def get_audit_logger() -> AuditLogger:
     global _audit_logger
-    if _audit_logger is None:
-        _audit_logger = AuditLogger()
-    return _audit_logger
+    with _audit_logger_lock:
+        if _audit_logger is None:
+            _audit_logger = AuditLogger()
+        return _audit_logger
 
 
 def reset_audit_logger() -> None:
@@ -293,7 +304,8 @@ def reset_audit_logger() -> None:
     a stale FileHandler pointing at a previous directory.
     """
     global _audit_logger
-    _audit_logger = None
+    with _audit_logger_lock:
+        _audit_logger = None
     logger = logging.getLogger("pacer.audit")
     for handler in list(logger.handlers):
         handler.close()

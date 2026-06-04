@@ -114,3 +114,65 @@ class TestErrorPayload:
         with pytest.raises(ValueError) as e:
             mcp.search_cases(case_number="1:20-cv-1")
         assert mcp.error_payload("search cases", e.value)["error"] == "POLICY_INVALID"
+
+
+class TestConcurrency:
+    """Race-condition tests for the MCP server's governance layer.
+
+    The MCP stdio server is single-threaded per connection, but the underlying
+    security primitives must also be safe when called from multiple threads
+    (e.g. two concurrent MCP connections, or a test harness using threads).
+    """
+
+    def test_get_audit_logger_singleton_is_thread_safe(self):
+        """get_audit_logger() must return the same instance from many threads."""
+        import threading
+
+        from pacer_cli.security import get_audit_logger, reset_audit_logger
+
+        reset_audit_logger()
+        results: list = []
+
+        def _grab():
+            results.append(id(get_audit_logger()))
+
+        threads = [threading.Thread(target=_grab) for _ in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # All threads must see the same singleton instance.
+        assert len(set(results)) == 1, "get_audit_logger() returned multiple instances"
+
+    def test_audit_logger_no_duplicate_handlers_under_concurrency(self):
+        """Concurrent _ensure_logger() calls must not add duplicate handlers."""
+        import threading
+
+        from pacer_cli.security import AuditLogger, reset_audit_logger
+
+        reset_audit_logger()
+        logger_obj = AuditLogger()
+        barrier = threading.Barrier(10)
+
+        def _init():
+            barrier.wait()  # all threads start at the same instant
+            logger_obj._ensure_logger()
+
+        threads = [threading.Thread(target=_init) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        import logging
+
+        inner = logging.getLogger("pacer.audit")
+        assert len(inner.handlers) == 1, (
+            f"Expected 1 handler, got {len(inner.handlers)} — duplicate handler race"
+        )
+
+    def test_check_then_act_gap_documented_in_guard(self):
+        """_guard's docstring explicitly acknowledges the check-then-act gap."""
+        assert "check-then-act" in mcp._guard.__doc__
+

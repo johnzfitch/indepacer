@@ -49,7 +49,16 @@ def _load_config(client_code: Optional[str] = None) -> PacerConfig:
 
 
 def _guard(cfg: PacerConfig, operation: str, estimated_cost: float) -> None:
-    """Run the preventive cap. Raises GovernanceError on a breach."""
+    """Run the preventive cap. Raises GovernanceError on a breach.
+
+    Note: there is an inherent check-then-act gap between this guard and the
+    subsequent ``_audit`` / ``_audit_download`` call (the network request runs
+    between them). Two concurrent tool calls could both pass the guard if the
+    combined cost would only exceed the cap after both are recorded. This matches
+    the CLI's behaviour — the cap is preventive, not a hard atomic guarantee for
+    the last fraction of the budget. In practice the MCP stdio server is
+    single-threaded per connection; the gap is documented here for completeness.
+    """
     check_spend(
         cfg,
         estimated_cost,
