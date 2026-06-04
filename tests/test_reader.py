@@ -77,12 +77,17 @@ class TestDocketParserFastParse:
 
 
 # ---------------------------------------------------------------------------
-# bs4-fallback branches (these run *because* bs4 is absent in this env)
+# bs4-fallback branches (run only when bs4 is NOT installed; skipped otherwise)
 # ---------------------------------------------------------------------------
 
 
 class TestDocketParserNoBs4Fallbacks:
-    """Cover the `if not HAS_BS4` early-return branches."""
+    """Cover the `if not HAS_BS4` early-return branches.
+
+    These run only in an environment without BeautifulSoup4 (e.g. the base
+    install). Under CI's `.[dev,full]` install bs4 is present, so each test
+    skips itself — the bs4-present behaviour is covered by TestDocketParserWithBs4.
+    """
 
     @pytest.fixture
     def parser(self, tmp_path):
