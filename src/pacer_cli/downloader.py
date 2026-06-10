@@ -9,7 +9,6 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -24,9 +23,9 @@ from .models import CaseSearchCriteria
 class DownloadResult:
     """Result of a docket download attempt."""
     success: bool
-    filepath: Optional[Path] = None
-    docs_filepath: Optional[Path] = None  # Path to docs.json manifest
-    error: Optional[str] = None
+    filepath: Path | None = None
+    docs_filepath: Path | None = None  # Path to docs.json manifest
+    error: str | None = None
     pages: int = 0
     cost: float = 0.0
 
@@ -90,7 +89,7 @@ def extract_document_metadata(
     }
 
 
-def load_cached_documents(case_dir: Path) -> Optional[dict]:
+def load_cached_documents(case_dir: Path) -> dict | None:
     """Load cached document metadata for a case.
 
     Args:
@@ -105,12 +104,12 @@ def load_cached_documents(case_dir: Path) -> Optional[dict]:
     if docs_path.exists():
         try:
             return json.loads(docs_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             pass  # unreadable docs.json cache -> treat as no cache
     return None
 
 
-def get_document_by_number(case_dir: Path, doc_number: str) -> Optional[dict]:
+def get_document_by_number(case_dir: Path, doc_number: str) -> dict | None:
     """Get document info by number from cached metadata.
 
     Args:
@@ -135,7 +134,7 @@ class DocketDownloader:
         self.config = config
         self.verbose = verbose
         self.session = requests.Session()
-        self.token: Optional[str] = None
+        self.token: str | None = None
 
     def _log(self, msg: str):
         """Print trace message if verbose mode enabled."""
@@ -316,7 +315,7 @@ class DocketDownloader:
         # District courts typically use format like nysd, cacd
         return f"https://ecf.{court_abbrev}.uscourts.gov"
 
-    def _get_case_id_from_link(self, case_link: str) -> Optional[str]:
+    def _get_case_id_from_link(self, case_link: str) -> str | None:
         """Extract case ID from a PCL case link URL.
 
         Args:
@@ -332,7 +331,7 @@ class DocketDownloader:
         self,
         case_link: str,
         output_dir: Path,
-        filename: Optional[str] = None,
+        filename: str | None = None,
     ) -> DownloadResult:
         """Download docket using a PCL case link URL.
 
@@ -552,7 +551,7 @@ class DocketDownloader:
         case_number: str,
         court_id: str,
         output_dir: Path,
-        filename: Optional[str] = None,
+        filename: str | None = None,
     ) -> DownloadResult:
         """Download docket by case number and court ID.
 
@@ -617,7 +616,7 @@ def download_docket(
     court_id: str,
     output_dir: Path,
     verbose: bool = False,
-    filename: Optional[str] = None,
+    filename: str | None = None,
 ) -> DownloadResult:
     """Convenience function to download a docket.
 
@@ -644,7 +643,7 @@ class DocumentDownloader:
     def __init__(self, config: PacerConfig, verbose: bool = False):
         self.config = config
         self.verbose = verbose
-        self._docket_dl: Optional[DocketDownloader] = None
+        self._docket_dl: DocketDownloader | None = None
         self.authenticated_courts: set[str] = set()
 
     def _log(self, msg: str):
@@ -713,7 +712,7 @@ class DocumentDownloader:
         self,
         doc_url: str,
         output_dir: Path,
-        filename: Optional[str] = None,
+        filename: str | None = None,
     ) -> DownloadResult:
         """Download a document from CM/ECF.
 

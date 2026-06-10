@@ -16,8 +16,8 @@ except ImportError:
     HAS_SELECTOLAX = False
 
 from .docket_types import (
-    DocketMeta,
     DocketEntry,
+    DocketMeta,
     ParsedDocket,
 )
 

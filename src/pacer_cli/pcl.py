@@ -7,8 +7,9 @@ index of federal court cases. Supports both immediate searches (paginated, max
 API Documentation: https://pacer.uscourts.gov/help/pacer/pacer-case-locator-api-user-guide
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional, TypeVar
+from typing import TypeVar
 
 import requests
 
@@ -16,7 +17,6 @@ T = TypeVar("T")
 
 from .auth import authenticate
 from .config import PacerConfig
-from .security import create_secure_session
 from .models import (
     BatchJobInfo,
     BatchJobListResponse,
@@ -25,6 +25,7 @@ from .models import (
     PartySearchCriteria,
     PartySearchResponse,
 )
+from .security import create_secure_session
 
 
 class PCLError(Exception):
@@ -64,7 +65,7 @@ class PCLClient:
     """
 
     config: PacerConfig
-    _token: Optional[str] = field(default=None, repr=False)
+    _token: str | None = field(default=None, repr=False)
     _session: requests.Session = field(default_factory=requests.Session, repr=False)
 
     def __post_init__(self):
@@ -93,7 +94,7 @@ class PCLClient:
         self,
         method: str,
         endpoint: str,
-        payload: Optional[dict] = None,
+        payload: dict | None = None,
         retry_auth: bool = True,
     ) -> requests.Response:
         """Make an authenticated request to the PCL API.

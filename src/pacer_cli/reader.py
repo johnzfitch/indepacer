@@ -642,7 +642,7 @@ class DocketProcessor:
         ]
 
         docket_path = self.processed_path / docket
-        with open(docket_path, "r", newline="", encoding="utf-8") as f:
+        with open(docket_path, newline="", encoding="utf-8") as f:
             reader = csv.reader(f, dialect="excel")
             for row in reader:
                 if not header_passed:
@@ -723,7 +723,7 @@ class DocketProcessor:
         output_file = self.output_path / f"all_match__{suffix}.csv"
 
         if not overwrite_flag and output_file.exists():
-            raise IOError(
+            raise OSError(
                 f'A .csv with the suffix "{suffix}" already exists. '
                 "Choose new suffix or specify overwrite_flag."
             )
@@ -763,7 +763,7 @@ class DocketProcessor:
                 for f in result_path.iterdir():
                     f.unlink()
             else:
-                raise IOError(
+                raise OSError(
                     f'.csv files with the suffix "{suffix}" already exist. '
                     "Choose new suffix or specify overwrite_flag."
                 )

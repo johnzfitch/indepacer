@@ -21,11 +21,12 @@ import re
 import ssl
 import threading
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Literal, Optional
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .config import PacerConfig
@@ -132,7 +133,7 @@ class RateLimiter:
 
 
 # Module-level rate limiter (resettable for tests)
-_rate_limiter: Optional[RateLimiter] = None
+_rate_limiter: RateLimiter | None = None
 _rate_limiter_lock = threading.Lock()
 
 
@@ -212,10 +213,10 @@ def show_peak_hours_warning(entry_count: int = 0) -> None:
 class AuditLogger:
     """Append-only audit log for PACER operations."""
 
-    def __init__(self, log_dir: Optional[Path] = None):
+    def __init__(self, log_dir: Path | None = None):
         # Resolve LOG_DIR at call time (not import) so tests can redirect it.
         self.log_dir = log_dir if log_dir is not None else LOG_DIR
-        self._logger: Optional[logging.Logger] = None
+        self._logger: logging.Logger | None = None
         self._init_lock = threading.Lock()
 
     def _ensure_logger(self) -> logging.Logger:
@@ -248,10 +249,10 @@ class AuditLogger:
         self,
         method: str,
         url: str,
-        status_code: Optional[int] = None,
+        status_code: int | None = None,
         cost: float = 0.0,
-        error: Optional[str] = None,
-        client_code: Optional[str] = None,
+        error: str | None = None,
+        client_code: str | None = None,
     ) -> None:
         logger = self._ensure_logger()
         parts = [f"{method} {url}"]
@@ -272,7 +273,7 @@ class AuditLogger:
         size_bytes: int,
         pages: int = 0,
         cost: float = 0.0,
-        client_code: Optional[str] = None,
+        client_code: str | None = None,
     ) -> None:
         logger = self._ensure_logger()
         line = (
@@ -284,7 +285,7 @@ class AuditLogger:
         logger.info(line)
 
 
-_audit_logger: Optional[AuditLogger] = None
+_audit_logger: AuditLogger | None = None
 _audit_logger_lock = threading.Lock()
 
 
@@ -367,7 +368,7 @@ def is_valid_matter_code(code: str) -> bool:
     return bool(_MATTER_CODE_RE.match(code))
 
 
-def spend_today(client_code: Optional[str] = None) -> float:
+def spend_today(client_code: str | None = None) -> float:
     """Sum today's billed cost (UTC calendar day) from the current audit log.
 
     Reads the same append-only log AuditLogger writes - no separate store. Uses
@@ -397,11 +398,11 @@ def spend_today(client_code: Optional[str] = None) -> float:
 
 
 def check_spend(
-    config: "PacerConfig",
+    config: PacerConfig,
     estimated_cost: float,
     *,
     prior_spend: float,
-    client_code: Optional[str] = None,
+    client_code: str | None = None,
 ) -> None:
     """Pure, side-effect-free preventive cap check.
 
@@ -457,7 +458,7 @@ SPEND_LOCKFILE = LOG_DIR / ".spend.lock"
 
 
 @contextmanager
-def spend_lock(timeout: float = 30.0) -> "Iterator[None]":
+def spend_lock(timeout: float = 30.0) -> Iterator[None]:
     """Hold the cross-process + in-process spend lock for a billable op.
 
     Reentrant within a process: the cross-process flock is taken only on the
@@ -549,7 +550,7 @@ class StreamingDownload:
                 pass  # best-effort cleanup; socket already broken is harmless
             self._closed = True
 
-    def __enter__(self) -> "StreamingDownload":
+    def __enter__(self) -> StreamingDownload:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -560,7 +561,7 @@ class StreamingDownload:
 def streaming_download(
     session: requests.Session,
     url: str,
-    headers: Optional[dict] = None,
+    headers: dict | None = None,
     timeout: int = 120,
     max_size: int = MAX_MEMORY_RESPONSE_SIZE,
 ) -> Iterator[StreamingDownload]:
@@ -641,7 +642,7 @@ def request_with_retry(
     **kwargs,
 ) -> requests.Response:
     """Make an HTTP request with exponential backoff on retryable errors."""
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
             resp = session.request(method, url, **kwargs)

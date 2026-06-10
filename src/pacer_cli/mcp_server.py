@@ -18,7 +18,7 @@ module does not require it - only :func:`main` / :func:`build_server` do.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from .config import PacerConfig, PolicyError, apply_policy_csv, get_config
 from .courts import resolve_court_scope
@@ -40,7 +40,7 @@ PCL_SEARCH_MAX = 3.00  # PACER caps a single search/report fee at $3.00
 # ---------------------------------------------------------------------------
 
 
-def _load_config(client_code: Optional[str] = None) -> PacerConfig:
+def _load_config(client_code: str | None = None) -> PacerConfig:
     """Config with the policy.csv overlay applied (human-provisioned creds only)."""
     cfg = get_config()  # env / config.env; never prompts, never unlocks the vault
     cfg = apply_policy_csv(cfg)  # may raise ValueError on a fat-fingered CSV (fail-closed)
@@ -107,7 +107,7 @@ def spend_status() -> dict[str, Any]:
     refusing.
     """
     cfg = get_config()  # base config; never raises
-    policy_error: Optional[str] = None
+    policy_error: str | None = None
     try:
         apply_policy_csv(cfg)
     except PolicyError as exc:
@@ -127,10 +127,10 @@ def spend_status() -> dict[str, Any]:
 
 
 def search_cases(
-    case_number: Optional[str] = None,
-    title: Optional[str] = None,
-    court: Optional[list[str]] = None,
-    client_code: Optional[str] = None,
+    case_number: str | None = None,
+    title: str | None = None,
+    court: list[str] | None = None,
+    client_code: str | None = None,
 ) -> dict[str, Any]:
     """Search the PACER Case Locator for cases (billable; gated by the spend cap)."""
     from .models import CaseSearchCriteria
@@ -157,10 +157,10 @@ def search_cases(
 
 
 def search_parties(
-    last_name: Optional[str] = None,
-    first_name: Optional[str] = None,
-    court: Optional[list[str]] = None,
-    client_code: Optional[str] = None,
+    last_name: str | None = None,
+    first_name: str | None = None,
+    court: list[str] | None = None,
+    client_code: str | None = None,
 ) -> dict[str, Any]:
     """Search the PACER Case Locator for parties (billable; gated by the spend cap)."""
     from .models import CaseSearchCriteria, PartySearchCriteria
@@ -190,7 +190,7 @@ def search_parties(
 def get_docket(
     case_number: str,
     court_id: str,
-    client_code: Optional[str] = None,
+    client_code: str | None = None,
 ) -> dict[str, Any]:
     """Download a case docket (billable; gated). Returns the saved path + page count."""
     from .downloader import DocketDownloader
@@ -216,7 +216,7 @@ def get_docket(
 def get_document(
     doc_link: str,
     doc_number: str = "0",
-    client_code: Optional[str] = None,
+    client_code: str | None = None,
 ) -> dict[str, Any]:
     """Download a single document by CM/ECF link (billable; gated)."""
     from .downloader import DocumentDownloader

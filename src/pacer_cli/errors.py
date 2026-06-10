@@ -1,7 +1,6 @@
 """User-friendly error handling with actionable next steps."""
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
@@ -15,8 +14,8 @@ class ErrorContext:
 
     title: str
     message: str
-    suggestions: List[str]
-    docs_link: Optional[str] = None
+    suggestions: list[str]
+    docs_link: str | None = None
 
 
 # Error catalog
@@ -171,8 +170,8 @@ ERRORS = {
 
 def show_error(
     error_key: str,
-    detail: Optional[str] = None,
-    extra_suggestions: Optional[List[str]] = None,
+    detail: str | None = None,
+    extra_suggestions: list[str] | None = None,
 ):
     """Display a rich error panel with suggestions.
 
@@ -207,7 +206,7 @@ def show_error(
     )
 
 
-def classify_pcl_error(error: Exception) -> Tuple[str, str]:
+def classify_pcl_error(error: Exception) -> tuple[str, str]:
     """Classify PCL exceptions to error keys.
 
     Args:
@@ -237,7 +236,7 @@ def classify_pcl_error(error: Exception) -> Tuple[str, str]:
         return "network_error", error_str
 
 
-def classify_download_error(error_message: str) -> Tuple[str, str]:
+def classify_download_error(error_message: str) -> tuple[str, str]:
     """Classify download error messages to error keys.
 
     Args:

@@ -7,9 +7,7 @@ with multiple output formats (compact, JSON, Markdown).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
-from typing import Optional
-
+from dataclasses import asdict, dataclass, field
 
 # Key filing terms for filtering significant entries
 KEY_TERMS = frozenset({
@@ -24,9 +22,9 @@ KEY_TERMS = frozenset({
 class Attorney:
     """Attorney information."""
     name: str
-    firm: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
+    firm: str | None = None
+    email: str | None = None
+    phone: str | None = None
     pro_hac_vice: bool = False
 
 
@@ -54,8 +52,8 @@ class DocketEntry:
     """Single docket entry."""
     seq: int
     date: str  # ISO format YYYY-MM-DD
-    doc_num: Optional[str] = None
-    doc_url: Optional[str] = None
+    doc_num: str | None = None
+    doc_url: str | None = None
     text: str = ""
     has_attachments: bool = False
     attachment_count: int = 0
@@ -80,16 +78,16 @@ class DocketMeta:
     case_number: str  # e.g., "1:18-cv-08434-VEC-SLC"
     case_title: str
     date_filed: str  # ISO format
-    date_closed: Optional[str] = None
+    date_closed: str | None = None
     judge: str = ""
-    magistrate: Optional[str] = None
+    magistrate: str | None = None
     nature_of_suit: str = ""  # Code like "442"
     nos_description: str = ""  # "Civil Rights: Jobs"
     cause: str = ""
     jurisdiction: str = ""
-    jury_demand: Optional[str] = None
-    demand: Optional[str] = None
-    lead_case: Optional[str] = None
+    jury_demand: str | None = None
+    demand: str | None = None
+    lead_case: str | None = None
     member_cases: list[str] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)  # CLOSED, MDL, etc.
 
@@ -100,7 +98,7 @@ class ParsedDocket:
     meta: DocketMeta
     entries: list[DocketEntry]
     parties: list[Party] = field(default_factory=list)
-    download_meta: Optional[dict] = None
+    download_meta: dict | None = None
 
     def key_entries(self, limit: int = 20) -> list[DocketEntry]:
         """Return most significant docket entries."""

@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,11 +38,11 @@ class PacerConfig(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    username: Optional[str] = None
-    password: Optional[SecretStr] = None
-    totp_secret: Optional[SecretStr] = None  # Base32-encoded TOTP secret for MFA (production)
-    qa_totp_secret: Optional[SecretStr] = None  # Base32-encoded TOTP secret for QA environment
-    client_code: Optional[str] = None  # Optional client code for billing
+    username: str | None = None
+    password: SecretStr | None = None
+    totp_secret: SecretStr | None = None  # Base32-encoded TOTP secret for MFA (production)
+    qa_totp_secret: SecretStr | None = None  # Base32-encoded TOTP secret for QA environment
+    client_code: str | None = None  # Optional client code for billing
     use_qa: bool = False  # Use QA environment instead of production
 
     # Legacy paths (deprecated, kept for backward compatibility)
@@ -98,7 +98,7 @@ class PacerConfig(BaseSettings):
         return self.active_totp_secret is not None
 
     @property
-    def active_totp_secret(self) -> Optional[SecretStr]:
+    def active_totp_secret(self) -> SecretStr | None:
         """Get TOTP secret for current environment (QA or production).
 
         Falls back to totp_secret if qa_totp_secret is not set in QA mode.
@@ -138,10 +138,10 @@ class PacerConfig(BaseSettings):
 class ContextConfig(BaseModel):
     """Active working context for CLI commands."""
 
-    court: Optional[str] = None
-    case_number: Optional[str] = None
-    case_path: Optional[Path] = None
-    updated_at: Optional[str] = None
+    court: str | None = None
+    case_number: str | None = None
+    case_path: Path | None = None
+    updated_at: str | None = None
 
     @classmethod
     def load(cls) -> "ContextConfig":
@@ -257,9 +257,9 @@ def apply_policy_csv(cfg: PacerConfig) -> PacerConfig:
 def save_credentials(
     username: str,
     password: str,
-    totp_secret: Optional[str] = None,
-    client_code: Optional[str] = None,
-    vault_passphrase: Optional[str] = None,
+    totp_secret: str | None = None,
+    client_code: str | None = None,
+    vault_passphrase: str | None = None,
 ) -> Path:
     """Save PACER credentials to encrypted vault.
 
@@ -281,8 +281,8 @@ def save_credentials(
 def _save_credentials_legacy(
     username: str,
     password: str,
-    totp_secret: Optional[str] = None,
-    client_code: Optional[str] = None,
+    totp_secret: str | None = None,
+    client_code: str | None = None,
 ) -> Path:
     """Save credentials to plaintext config.env (legacy mode)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -302,8 +302,8 @@ def _save_credentials_legacy(
 def _save_credentials_vault(
     username: str,
     password: str,
-    totp_secret: Optional[str] = None,
-    client_code: Optional[str] = None,
+    totp_secret: str | None = None,
+    client_code: str | None = None,
     passphrase: str = "",
 ) -> Path:
     """Save credentials to encrypted vault."""
@@ -401,7 +401,7 @@ def ensure_dirs(config: PacerConfig) -> None:
     config.parsed_dockets.mkdir(parents=True, exist_ok=True)
 
 
-def check_legacy_archive() -> Optional[Path]:
+def check_legacy_archive() -> Path | None:
     """Check for old-style flat archive that could be migrated.
 
     Returns:

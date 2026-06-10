@@ -6,12 +6,11 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 from rich.table import Table
 
 from .config import (
@@ -54,7 +53,7 @@ COMMAND_ALIASES = {
     "doc": ["download", "document"],
     "grep": ["search"],
     "find": ["search"],
-    
+
     # Alternative PCL shortcuts
     "cases": ["pcl", "cases"],
     "parties": ["pcl", "parties"],
@@ -67,21 +66,21 @@ class AliasGroup(click.Group):
     Allows users to use shorter command names that map to full paths.
     Example: 'pacer docket' -> 'pacer download docket'
     """
-    
-    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         # Try exact match first
         rv = click.Group.get_command(self, ctx, cmd_name)
         if rv is not None:
             return rv
-        
+
         # Check if it's an alias
         if cmd_name in COMMAND_ALIASES:
             alias_path = COMMAND_ALIASES[cmd_name]
-            
+
             # For single-element paths, just look up directly
             if len(alias_path) == 1:
                 return click.Group.get_command(self, ctx, alias_path[0])
-            
+
             # For multi-part paths (e.g., ["download", "docket"]),
             # navigate through subgroups
             current_group = self
@@ -90,27 +89,27 @@ class AliasGroup(click.Group):
                 if sub_cmd is None or not isinstance(sub_cmd, click.Group):
                     return None
                 current_group = sub_cmd
-            
+
             return click.Group.get_command(current_group, ctx, alias_path[-1])
-        
+
         return None
-    
+
     def resolve_command(self, ctx: click.Context, args: list) -> tuple:
         """Resolve command, handling multi-part aliases."""
         cmd_name = args[0] if args else None
-        
+
         if cmd_name and cmd_name in COMMAND_ALIASES:
             # Get the actual command
             cmd = self.get_command(ctx, cmd_name)
             if cmd:
                 return cmd_name, cmd, args[1:]
-        
+
         return super().resolve_command(ctx, args)
-    
+
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         """Add aliases section to help output."""
         super().format_commands(ctx, formatter)
-        
+
         # Show aliases in help
         with formatter.section("Aliases"):
             alias_rows = []
@@ -129,7 +128,7 @@ def confirm_cost(
     ctx: click.Context,
     operation: str,
     estimated_cost: float,
-    details: Optional[str] = None,
+    details: str | None = None,
 ) -> bool:
     """Prompt user to confirm a billable operation.
 
@@ -189,8 +188,8 @@ def enforce_spend(
     operation: str,
     estimated_cost: float,
     *,
-    client_code: Optional[str] = None,
-    details: Optional[str] = None,
+    client_code: str | None = None,
+    details: str | None = None,
 ) -> bool:
     """Preventive spend-cap gate. Replaces the raw confirm_cost call.
 
@@ -347,7 +346,7 @@ def cli(ctx, yes: bool, agent: bool):
             ctx.obj["config"] = get_config()
     else:
         ctx.obj["config"] = get_config()
-    
+
     # Check for legacy archive on first run (unless migrated)
     if not migration_marker_exists():
         legacy_path = check_legacy_archive()
@@ -374,7 +373,7 @@ def cli(ctx, yes: bool, agent: bool):
 @click.option("--dry-run", is_flag=True, help="Show what would be moved without moving")
 @click.option("--legacy-dir", type=click.Path(exists=True, path_type=Path), help="Legacy archive directory")
 @click.pass_context
-def migrate_archive(ctx, dry_run: bool, legacy_dir: Optional[Path]):
+def migrate_archive(ctx, dry_run: bool, legacy_dir: Path | None):
     """Migrate from legacy flat archive to new hierarchical structure.
 
     \b
@@ -394,18 +393,18 @@ def migrate_archive(ctx, dry_run: bool, legacy_dir: Optional[Path]):
       pacer migrate --legacy-dir ./old # Migrate from custom location
     """
     from .downloader import extract_document_metadata
-    
+
     config: PacerConfig = ctx.obj["config"]
-    
+
     # Find legacy files
     source_dir = legacy_dir or config.docket_archive
     if not source_dir.exists():
         console.print(f"[yellow]No legacy archive found at:[/] {source_dir}")
         return
-    
+
     # Pattern: {court}_{case}.html where case has + for :
     legacy_pattern = re.compile(r"^([a-z]{2,5}dce)_(.+)\.html$")
-    
+
     files_to_migrate = []
     for html_file in source_dir.glob("*.html"):
         match = legacy_pattern.match(html_file.name)
@@ -421,38 +420,38 @@ def migrate_archive(ctx, dry_run: bool, legacy_dir: Optional[Path]):
                 "case": case_normalized,
                 "target_dir": config.archive_root / court_normalized / case_normalized,
             })
-    
+
     if not files_to_migrate:
         console.print("[yellow]No legacy docket files found to migrate.[/]")
         if not dry_run:
             mark_migration_complete()
         return
-    
+
     console.print(f"[cyan]Found {len(files_to_migrate)} dockets to migrate[/]\n")
-    
+
     if dry_run:
         table = Table(title="Migration Preview")
         table.add_column("Source", style="dim")
         table.add_column("Target", style="green")
-        
+
         for item in files_to_migrate[:20]:
             table.add_row(
                 item["source"].name,
                 str(item["target_dir"] / "docket.html"),
             )
-        
+
         console.print(table)
         if len(files_to_migrate) > 20:
             console.print(f"[dim]... and {len(files_to_migrate) - 20} more[/]")
-        
+
         console.print("\n[dim]Run without --dry-run to perform migration.[/]")
         return
-    
+
     # Perform migration
     migrated = 0
     skipped = 0
     errors = 0
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -461,26 +460,26 @@ def migrate_archive(ctx, dry_run: bool, legacy_dir: Optional[Path]):
         console=console,
     ) as progress:
         task = progress.add_task("Migrating dockets...", total=len(files_to_migrate))
-        
+
         for item in files_to_migrate:
             try:
                 target_dir = item["target_dir"]
                 target_html = target_dir / "docket.html"
-                
+
                 # Skip if already migrated
                 if target_html.exists():
                     skipped += 1
                     progress.advance(task)
                     continue
-                
+
                 # Create target directory
                 target_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 # Copy docket file
                 source_html = item["source"]
                 html_content = source_html.read_text(encoding="utf-8", errors="ignore")
                 target_html.write_text(html_content, encoding="utf-8")
-                
+
                 # Generate docs.json from the docket
                 try:
                     import json
@@ -500,27 +499,27 @@ def migrate_archive(ctx, dry_run: bool, legacy_dir: Optional[Path]):
                 except Exception:
                     # docs.json generation failed, but docket copy still succeeds
                     pass
-                
+
                 migrated += 1
-                
+
             except Exception as e:
                 err_console.print(f"[red]Error migrating {item['source'].name}:[/] {e}")
                 errors += 1
-            
+
             progress.advance(task)
-    
+
     console.print()
     console.print(f"[green]Migrated:[/] {migrated} dockets")
     if skipped:
         console.print(f"[dim]Skipped:[/] {skipped} (already exist)")
     if errors:
         console.print(f"[red]Errors:[/] {errors}")
-    
+
     console.print(f"\n[dim]New archive location:[/] {config.archive_root}")
-    
+
     # Mark migration complete
     mark_migration_complete()
-    
+
     console.print()
     console.print(Panel(
         "[green]Migration complete![/]\n\n"
@@ -699,7 +698,7 @@ def auth_init(ctx, qa: bool):
     help="Client billing code (optional)",
 )
 @click.pass_context
-def auth_login(ctx, username: Optional[str], password: Optional[str], totp_secret: Optional[str], client_code: Optional[str]):
+def auth_login(ctx, username: str | None, password: str | None, totp_secret: str | None, client_code: str | None):
     """Store PACER credentials securely.
 
     \b
@@ -772,8 +771,9 @@ def auth_code(ctx, watch: bool):
         err_console.print("Run [cyan]pacer auth setup-mfa[/] to configure MFA.")
         sys.exit(1)
 
-    from .auth import generate_totp
     import time
+
+    from .auth import generate_totp
 
     secret = config.totp_secret.get_secret_value()
 
@@ -841,7 +841,7 @@ def auth_setup_mfa(ctx, totp_secret: str):
 @auth.command("test")
 @click.option("--otp", "-o", default=None, help="Manual OTP code (if not using stored TOTP)")
 @click.pass_context
-def auth_test(ctx, otp: Optional[str]):
+def auth_test(ctx, otp: str | None):
     """Test authentication with PACER servers.
 
     Verifies credentials work and immediately logs out.
@@ -1040,12 +1040,12 @@ def download():
 @under_spend_lock
 def download_docket_cmd(
     ctx,
-    case_number: Optional[str],
-    court_id: Optional[str],
+    case_number: str | None,
+    court_id: str | None,
     verbose: bool,
     case_link: str,
     legacy: bool,
-    client_code: Optional[str],
+    client_code: str | None,
 ):
     """Download a single case docket.
 
@@ -1164,7 +1164,7 @@ def download_docket_cmd(
 @matter_option
 @click.pass_context
 @under_spend_lock
-def download_document(ctx, doc_number: str, doc_link: Optional[str], verbose: bool, client_code: Optional[str]):
+def download_document(ctx, doc_number: str, doc_link: str | None, verbose: bool, client_code: str | None):
     """Download a single document from a case.
 
     \b
@@ -1269,7 +1269,7 @@ def download_document(ctx, doc_number: str, doc_link: Optional[str], verbose: bo
 @click.argument("case", required=False)
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 @click.pass_context
-def list_documents(ctx, case: Optional[str], output_json: bool):
+def list_documents(ctx, case: str | None, output_json: bool):
     """List documents from a downloaded docket's cache.
 
     Uses the docs.json file created during docket download.
@@ -1352,10 +1352,10 @@ def list_documents(ctx, case: Optional[str], output_json: bool):
 @click.pass_context
 def view_case(
     ctx,
-    case: Optional[str],
+    case: str | None,
     output_format: str,
     verbose: bool,
-    output: Optional[Path],
+    output: Path | None,
 ):
     """View a parsed docket from the local archive.
 
@@ -1439,7 +1439,7 @@ def view_case(
 @matter_option
 @click.pass_context
 @under_spend_lock
-def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, verbose: bool, client_code: Optional[str]):
+def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, verbose: bool, client_code: str | None):
     """Download multiple dockets from a CSV file.
 
     The CSV should have columns for court ID and case number.
@@ -1526,7 +1526,7 @@ def parse():
     help="Input directory (default: local_docket_archive)",
 )
 @click.pass_context
-def parse_all(ctx, input_dir: Optional[Path]):
+def parse_all(ctx, input_dir: Path | None):
     """Parse all dockets in the archive directory."""
     config: PacerConfig = ctx.obj["config"]
     ensure_dirs(config)
@@ -1591,7 +1591,7 @@ def parse_file(ctx, docket_file: Path, output_json: bool):
 @click.argument("docket_file", type=click.Path(exists=True, path_type=Path))
 @click.option("--verbose", "-v", is_flag=True, help="Show all entries (default: key entries only)")
 @click.option("--output", "-o", type=click.Path(path_type=Path), help="Save to file")
-def parse_text(docket_file: Path, verbose: bool, output: Optional[Path]):
+def parse_text(docket_file: Path, verbose: bool, output: Path | None):
     """Extract plain text from docket HTML.
 
     Outputs clean, token-efficient text for analysis.
@@ -1630,8 +1630,8 @@ def search_dockets(
     ctx,
     require: tuple,
     exclude: tuple,
-    within: Optional[int],
-    output: Optional[Path],
+    within: int | None,
+    output: Path | None,
     individual: bool,
 ):
     """Search parsed docket entries.
