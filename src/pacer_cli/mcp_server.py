@@ -147,7 +147,11 @@ def search_cases(
     with spend_lock():
         _guard(cfg, "search cases", COST_PER_PAGE)
         response = PCLClient(cfg).search_cases(criteria)
-        fee = float(response.receipt.search_fee) if response.receipt and response.receipt.search_fee else 0.0
+        fee = (
+            float(response.receipt.search_fee)
+            if response.receipt and response.receipt.search_fee
+            else 0.0
+        )
         _audit(cfg, "POST /cases/find", fee)
     return {
         "cost": fee,
@@ -178,7 +182,11 @@ def search_parties(
     with spend_lock():
         _guard(cfg, "search parties", COST_PER_PAGE)
         response = PCLClient(cfg).search_parties(criteria)
-        fee = float(response.receipt.search_fee) if response.receipt and response.receipt.search_fee else 0.0
+        fee = (
+            float(response.receipt.search_fee)
+            if response.receipt and response.receipt.search_fee
+            else 0.0
+        )
         _audit(cfg, "POST /parties/find", fee)
     return {
         "cost": fee,
@@ -209,7 +217,13 @@ def get_docket(
             raise RuntimeError(result.error or "docket download failed")
         cost = float(result.cost or 0.0)
         pages = int(result.pages or 0)
-        _audit_download(cfg, f"docket {court_normalized}/{case_number}", str(result.filepath), pages, cost)
+        _audit_download(
+            cfg,
+            f"docket {court_normalized}/{case_number}",
+            str(result.filepath),
+            pages,
+            cost,
+        )
     return {"path": str(result.filepath), "pages": pages, "cost": cost}
 
 

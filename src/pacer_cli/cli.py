@@ -296,7 +296,11 @@ def under_spend_lock(f):
 @click.group(cls=AliasGroup)
 @click.version_option()
 @click.option("--yes", "-y", is_flag=True, help="Skip cost confirmation prompts")
-@click.option("--agent", is_flag=True, help="Non-interactive mode for AI agents (JSON errors, exit 3 on cap).")
+@click.option(
+    "--agent",
+    is_flag=True,
+    help="Non-interactive mode for AI agents (JSON errors, exit 3 on cap).",
+)
 @click.pass_context
 def cli(ctx, yes: bool, agent: bool):
     """PACER CLI - Download, parse, and search federal court documents.
@@ -371,7 +375,11 @@ def cli(ctx, yes: bool, agent: bool):
 
 @cli.command("migrate")
 @click.option("--dry-run", is_flag=True, help="Show what would be moved without moving")
-@click.option("--legacy-dir", type=click.Path(exists=True, path_type=Path), help="Legacy archive directory")
+@click.option(
+    "--legacy-dir",
+    type=click.Path(exists=True, path_type=Path),
+    help="Legacy archive directory",
+)
 @click.pass_context
 def migrate_archive(ctx, dry_run: bool, legacy_dir: Path | None):
     """Migrate from legacy flat archive to new hierarchical structure.
@@ -600,14 +608,20 @@ def auth_init(ctx, qa: bool):
             try:
                 code = generate_totp(totp_secret)
                 console.print(f"  [green]Valid![/] Current code: [bold]{code}[/]")
-                console.print("  [dim]This code should match what you'd see in Authy/Google Authenticator.[/]")
+                console.print(
+                    "  [dim]This code should match what you'd see in "
+                    "Authy/Google Authenticator.[/]"
+                )
                 if Confirm.ask("  Does this code look correct?", default=True):
                     break
                 else:
                     console.print("  [yellow]Let's try again.[/]")
             except Exception as e:
                 console.print(f"  [red]Invalid secret:[/] {e}")
-                console.print("  [dim]The secret should be a Base32 string (letters A-Z and digits 2-7).[/]")
+                console.print(
+                    "  [dim]The secret should be a Base32 string "
+                    "(letters A-Z and digits 2-7).[/]"
+                )
                 if not Confirm.ask("  Try again?", default=True):
                     totp_secret = None
                     break
@@ -698,7 +712,13 @@ def auth_init(ctx, qa: bool):
     help="Client billing code (optional)",
 )
 @click.pass_context
-def auth_login(ctx, username: str | None, password: str | None, totp_secret: str | None, client_code: str | None):
+def auth_login(
+    ctx,
+    username: str | None,
+    password: str | None,
+    totp_secret: str | None,
+    client_code: str | None,
+):
     """Store PACER credentials securely.
 
     \b
@@ -741,7 +761,9 @@ def auth_login(ctx, username: str | None, password: str | None, totp_secret: str
                 continue
             break
 
-    config_path = save_credentials(username, password, totp_secret, client_code, vault_passphrase=passphrase)
+    config_path = save_credentials(
+        username, password, totp_secret, client_code, vault_passphrase=passphrase
+    )
     console.print(f"[green]Credentials saved to encrypted vault:[/] {config_path}")
     console.print("[dim]File permissions set to 600 (owner read/write only)[/]")
 
@@ -749,7 +771,10 @@ def auth_login(ctx, username: str | None, password: str | None, totp_secret: str
         console.print("[green]MFA:[/] TOTP secret configured for automatic code generation")
     else:
         console.print("[yellow]MFA:[/] No TOTP secret provided.")
-        console.print("[dim]If your account has MFA enabled, use --totp-secret or pacer auth setup-mfa[/]")
+        console.print(
+            "[dim]If your account has MFA enabled, use --totp-secret or "
+            "pacer auth setup-mfa[/]"
+        )
 
 
 @auth.command("code")
@@ -784,7 +809,9 @@ def auth_code(ctx, watch: bool):
                 code = generate_totp(secret)
                 # Calculate seconds until next code
                 remaining = 30 - (int(time.time()) % 30)
-                console.print(f"\r[bold green]{code}[/]  [dim]expires in {remaining:2d}s[/]", end="")
+                console.print(
+                    f"\r[bold green]{code}[/]  [dim]expires in {remaining:2d}s[/]", end=""
+                )
                 time.sleep(1)
         except KeyboardInterrupt:
             console.print("\n")
@@ -1002,7 +1029,10 @@ def use_status(ctx):
             documents_dir = context.case_path / "documents"
             doc_count = len(list(documents_dir.glob("*.pdf"))) if documents_dir.exists() else 0
 
-            table.add_row("Docket", "[green]downloaded[/]" if docket.exists() else "[dim]not downloaded[/]")
+            table.add_row(
+                "Docket",
+                "[green]downloaded[/]" if docket.exists() else "[dim]not downloaded[/]",
+            )
             table.add_row("Doc manifest", "[green]cached[/]" if docs.exists() else "[dim]none[/]")
             if doc_count > 0:
                 table.add_row("Documents", f"[green]{doc_count} PDF(s)[/]")
@@ -1033,7 +1063,12 @@ def download():
 @click.argument("case_number", required=False)
 @click.argument("court_id", required=False)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose/trace logging")
-@click.option("--case-link", "-l", default=None, help="Direct CM/ECF case link URL (bypasses PCL search)")
+@click.option(
+    "--case-link",
+    "-l",
+    default=None,
+    help="Direct CM/ECF case link URL (bypasses PCL search)",
+)
 @click.option("--legacy", is_flag=True, help="Use legacy flat archive structure")
 @matter_option
 @click.pass_context
@@ -1074,7 +1109,9 @@ def download_docket_cmd(
         context = ContextConfig.load()
         if not context.is_set:
             err_console.print("[red]Error:[/] No case specified and no context set.")
-            err_console.print("[dim]Either provide arguments or use:[/] pacer use case <court> <case>")
+            err_console.print(
+                "[dim]Either provide arguments or use:[/] pacer use case <court> <case>"
+            )
             sys.exit(1)
         case_number = case_number or context.case_number
         court_id = court_id or context.court
@@ -1119,7 +1156,9 @@ def download_docket_cmd(
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
-        progress.add_task(f"Downloading docket {case_number} from {court_normalized}...", total=None)
+        progress.add_task(
+            f"Downloading docket {case_number} from {court_normalized}...", total=None
+        )
 
         downloader = DocketDownloader(config, verbose=verbose)
 
@@ -1164,7 +1203,9 @@ def download_docket_cmd(
 @matter_option
 @click.pass_context
 @under_spend_lock
-def download_document(ctx, doc_number: str, doc_link: str | None, verbose: bool, client_code: str | None):
+def download_document(
+    ctx, doc_number: str, doc_link: str | None, verbose: bool, client_code: str | None
+):
     """Download a single document from a case.
 
     \b
@@ -1193,7 +1234,9 @@ def download_document(ctx, doc_number: str, doc_link: str | None, verbose: bool,
         # Need context to resolve the link
         if not context.is_set or not context.case_path:
             err_console.print("[red]Error:[/] No document link provided and no context set.")
-            err_console.print("[dim]Either provide a link or set context:[/] pacer use case <court> <case>")
+            err_console.print(
+                "[dim]Either provide a link or set context:[/] pacer use case <court> <case>"
+            )
             sys.exit(1)
 
         case_dir = context.case_path
@@ -1335,7 +1378,8 @@ def list_documents(ctx, case: str | None, output_json: bool):
             )
 
         console.print(table)
-        console.print(f"\n[dim]Total: {docs.get('document_count', len(docs.get('documents', [])))} documents with links[/]")
+        total_docs = docs.get("document_count", len(docs.get("documents", [])))
+        console.print(f"\n[dim]Total: {total_docs} documents with links[/]")
         console.print(f"[dim]Case: {docs.get('case_title', '')}[/]")
 
 
@@ -1439,7 +1483,14 @@ def view_case(
 @matter_option
 @click.pass_context
 @under_spend_lock
-def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, verbose: bool, client_code: str | None):
+def download_batch(
+    ctx,
+    csv_file: Path,
+    column_court: str,
+    column_case: str,
+    verbose: bool,
+    client_code: str | None,
+):
     """Download multiple dockets from a CSV file.
 
     The CSV should have columns for court ID and case number.
@@ -2067,7 +2118,11 @@ def pcl_cases(
                 response = client.search_cases(criteria, page=page)
                 all_results = response.content
                 page_info = response.page_info
-                total_fee = float(response.receipt.search_fee) if response.receipt and response.receipt.search_fee else 0.0
+                total_fee = (
+                    float(response.receipt.search_fee)
+                    if response.receipt and response.receipt.search_fee
+                    else 0.0
+                )
 
         # Record actual spend from the receipt so caps converge on real cost.
         if total_fee > 0:
@@ -2098,7 +2153,17 @@ def pcl_cases(
         elif output_csv:
             import csv as csv_module
             import io
-            fieldnames = ["court_id", "case_number_full", "case_type", "case_title", "date_filed", "effective_date_closed", "jurisdiction_type", "nature_of_suit", "case_link"]
+            fieldnames = [
+                "court_id",
+                "case_number_full",
+                "case_type",
+                "case_title",
+                "date_filed",
+                "effective_date_closed",
+                "jurisdiction_type",
+                "nature_of_suit",
+                "case_link",
+            ]
 
             if output:
                 with open(output, "w", newline="") as f:
@@ -2142,7 +2207,10 @@ def pcl_cases(
                     f"({page_info.total_elements} total cases)[/]"
                 )
             if len(all_results) > 50:
-                console.print(f"[dim]Showing first 50 of {len(all_results)}. Use --json or --csv for full output.[/]")
+                console.print(
+                    f"[dim]Showing first 50 of {len(all_results)}. "
+                    "Use --json or --csv for full output.[/]"
+                )
 
             # Interactive selection
             if interactive and all_results:
@@ -2202,7 +2270,9 @@ def _handle_case_action(ctx, config: PacerConfig, case, action: str):
             ctx.invoke(view_case, case=str(docket_path))
         else:
             err_console.print("[yellow]Docket not downloaded yet.[/]")
-            err_console.print(f"[dim]Download with:[/] pacer download docket \"{case_number}\" {court}")
+            err_console.print(
+                f'[dim]Download with:[/] pacer download docket "{case_number}" {court}'
+            )
 
     elif action == "s":
         # Set as context
@@ -2383,7 +2453,11 @@ def pcl_parties(
                 response = client.search_parties(criteria, page=page)
                 all_results = response.content
                 page_info = response.page_info
-                total_fee = float(response.receipt.search_fee) if response.receipt and response.receipt.search_fee else 0.0
+                total_fee = (
+                    float(response.receipt.search_fee)
+                    if response.receipt and response.receipt.search_fee
+                    else 0.0
+                )
 
         # Record actual spend from the receipt so caps converge on real cost.
         if total_fee > 0:
@@ -2412,7 +2486,16 @@ def pcl_parties(
         elif output_csv:
             import csv as csv_module
             import io
-            fieldnames = ["last_name", "first_name", "middle_name", "party_role", "court_id", "case_number_full", "case_title", "date_filed"]
+            fieldnames = [
+                "last_name",
+                "first_name",
+                "middle_name",
+                "party_role",
+                "court_id",
+                "case_number_full",
+                "case_title",
+                "date_filed",
+            ]
 
             if output:
                 with open(output, "w", newline="") as f:
@@ -2456,7 +2539,10 @@ def pcl_parties(
                     f"({page_info.total_elements} total parties)[/]"
                 )
             if len(all_results) > 50:
-                console.print(f"[dim]Showing first 50 of {len(all_results)}. Use --json or --csv for full output.[/]")
+                console.print(
+                    f"[dim]Showing first 50 of {len(all_results)}. "
+                    "Use --json or --csv for full output.[/]"
+                )
 
     except PCLError as e:
         err_console.print(f"[red]Error:[/] {e}")
@@ -2487,7 +2573,13 @@ def pcl_batch():
 
 
 @pcl_batch.command("list")
-@click.option("--type", "search_type", type=click.Choice(["cases", "parties"]), default="cases", help="Search type")
+@click.option(
+    "--type",
+    "search_type",
+    type=click.Choice(["cases", "parties"]),
+    default="cases",
+    help="Search type",
+)
 @click.pass_context
 def batch_list(ctx, search_type):
     """List all batch jobs."""
@@ -2531,7 +2623,13 @@ def batch_list(ctx, search_type):
 
 @pcl_batch.command("status")
 @click.argument("report_id", type=int)
-@click.option("--type", "search_type", type=click.Choice(["cases", "parties"]), default="cases", help="Search type")
+@click.option(
+    "--type",
+    "search_type",
+    type=click.Choice(["cases", "parties"]),
+    default="cases",
+    help="Search type",
+)
 @click.pass_context
 def batch_status(ctx, report_id, search_type):
     """Check status of a batch job."""
@@ -2567,8 +2665,20 @@ def batch_status(ctx, report_id, search_type):
 
 @pcl_batch.command("download")
 @click.argument("report_id", type=int)
-@click.option("--type", "search_type", type=click.Choice(["cases", "parties"]), default="cases", help="Search type")
-@click.option("--output", "-o", type=click.Path(path_type=Path), required=True, help="Output file (JSON)")
+@click.option(
+    "--type",
+    "search_type",
+    type=click.Choice(["cases", "parties"]),
+    default="cases",
+    help="Search type",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Output file (JSON)",
+)
 @click.pass_context
 def batch_download(ctx, report_id, search_type, output):
     """Download results from a completed batch job."""
@@ -2604,7 +2714,13 @@ def batch_download(ctx, report_id, search_type, output):
 
 @pcl_batch.command("delete")
 @click.argument("report_id", type=int)
-@click.option("--type", "search_type", type=click.Choice(["cases", "parties"]), default="cases", help="Search type")
+@click.option(
+    "--type",
+    "search_type",
+    type=click.Choice(["cases", "parties"]),
+    default="cases",
+    help="Search type",
+)
 @click.pass_context
 def batch_delete(ctx, report_id, search_type):
     """Delete a batch job and its results."""

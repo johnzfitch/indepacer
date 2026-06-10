@@ -30,7 +30,10 @@ ERRORS = {
     ),
     "spend_locked": ErrorContext(
         title="Spend Lock Busy",
-        message="Another billable operation holds the spend lock; refused rather than risk a concurrent overspend.",
+        message=(
+            "Another billable operation holds the spend lock; refused rather "
+            "than risk a concurrent overspend."
+        ),
         suggestions=[
             "Retry in a moment — a concurrent op is finishing.",
             "If this persists, a stuck process may hold ~/.pacer/logs/.spend.lock",
@@ -46,7 +49,10 @@ ERRORS = {
     ),
     "policy_invalid": ErrorContext(
         title="Policy File Unparseable",
-        message="A value in policy.csv could not be parsed; billable ops are blocked (fail-closed).",
+        message=(
+            "A value in policy.csv could not be parsed; billable ops are "
+            "blocked (fail-closed)."
+        ),
         suggestions=[
             "Fix the offending row in [cyan]~/.pacer/config/policy.csv[/]",
             "Dollar caps must be plain numbers, e.g. [cyan]5.00[/]",
@@ -62,7 +68,10 @@ ERRORS = {
     ),
     "scope_empty": ErrorContext(
         title="No Courts In Scope",
-        message="courts.csv disables every court, so this search has no courts to run against (refused fail-closed instead of searching nationwide).",
+        message=(
+            "courts.csv disables every court, so this search has no courts to "
+            "run against (refused fail-closed instead of searching nationwide)."
+        ),
         suggestions=[
             "Enable at least one court: [cyan]pacer courts enable cand nysd[/]",
             "Or clear the scope to search nationwide: [cyan]pacer courts enable-all[/]",

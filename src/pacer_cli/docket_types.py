@@ -44,7 +44,9 @@ class Party:
         atty_names = ', '.join(a.name for a in self.attorneys[:2])
         if len(self.attorneys) > 2:
             atty_names += f" +{len(self.attorneys) - 2}"
-        return f"{role_abbrev}: {self.name} | Atty: {atty_names}" if atty_names else f"{role_abbrev}: {self.name}"
+        if atty_names:
+            return f"{role_abbrev}: {self.name} | Atty: {atty_names}"
+        return f"{role_abbrev}: {self.name}"
 
 
 @dataclass
@@ -163,13 +165,20 @@ class ParsedDocket:
         if self.meta.judge:
             lines.append(f"**Judge:** {self.meta.judge}  ")
         if self.meta.nature_of_suit:
-            lines.append(f"**Nature of Suit:** {self.meta.nature_of_suit} - {self.meta.nos_description}  ")
+            lines.append(
+                f"**Nature of Suit:** {self.meta.nature_of_suit} - "
+                f"{self.meta.nos_description}  "
+            )
 
         # Parties
         if self.parties:
             lines.extend(["", "## Parties", ""])
             for party in self.parties:
-                atty_list = ", ".join(a.name for a in party.attorneys) if party.attorneys else "(none)"
+                atty_list = (
+                    ", ".join(a.name for a in party.attorneys)
+                    if party.attorneys
+                    else "(none)"
+                )
                 lines.append(f"- **{party.role}:** {party.name}")
                 if party.pro_se:
                     lines.append("  - *Pro Se*")

@@ -580,7 +580,9 @@ def streaming_download(
 # ---------------------------------------------------------------------------
 
 
-def safe_response_content(response: requests.Response, max_size: int = MAX_MEMORY_RESPONSE_SIZE) -> bytes:
+def safe_response_content(
+    response: requests.Response, max_size: int = MAX_MEMORY_RESPONSE_SIZE
+) -> bytes:
     """Read response content with a size guard.
 
     Checks Content-Length header before reading. Falls back to

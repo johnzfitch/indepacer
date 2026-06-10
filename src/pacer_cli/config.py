@@ -274,7 +274,9 @@ def save_credentials(
         Path to vault file
     """
     if vault_passphrase:
-        return _save_credentials_vault(username, password, totp_secret, client_code, vault_passphrase)
+        return _save_credentials_vault(
+            username, password, totp_secret, client_code, vault_passphrase
+        )
     return _save_credentials_legacy(username, password, totp_secret, client_code)
 
 
