@@ -13,8 +13,6 @@ from typing import TypeVar
 
 import requests
 
-T = TypeVar("T")
-
 from .auth import authenticate
 from .config import PacerConfig
 from .models import (
@@ -26,6 +24,8 @@ from .models import (
     PartySearchResponse,
 )
 from .security import create_secure_session
+
+T = TypeVar("T")
 
 
 class PCLError(Exception):

@@ -334,7 +334,7 @@ class BudgetError(GovernanceError):
     error_key = "budget_exceeded"
 
 
-class MatterRequired(GovernanceError):
+class MatterRequired(GovernanceError):  # noqa: N818
     """policy.csv requires a client/matter code for billable operations."""
 
     error_key = "matter_required"
@@ -347,7 +347,7 @@ class ScopeError(GovernanceError):
     error_key = "scope_empty"
 
 
-class MatterInvalid(GovernanceError):
+class MatterInvalid(GovernanceError):  # noqa: N818
     """The client/matter code contains unsafe characters or is too long.
 
     The code is written verbatim into the audit line that doubles as the spend
@@ -438,7 +438,7 @@ def check_spend(
         )
 
 
-class SpendLockTimeout(GovernanceError):
+class SpendLockTimeout(GovernanceError):  # noqa: N818
     """Could not acquire the spend lock in time — refuse rather than risk a
     concurrent overspend (fail-closed)."""
 

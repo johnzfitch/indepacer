@@ -57,7 +57,7 @@ class VaultError(Exception):
     pass
 
 
-class VaultLocked(VaultError):
+class VaultLocked(VaultError):  # noqa: N818
     """Vault is locked, call unlock() first."""
     pass
 

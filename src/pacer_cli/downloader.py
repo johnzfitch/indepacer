@@ -785,14 +785,22 @@ class DocumentDownloader:
 
                         # Build POST data from goDLS params
                         form_data = {}
-                        if caseid: form_data['caseid'] = caseid
-                        if de_seq: form_data['de_seq_num'] = de_seq
-                        if got_receipt: form_data['got_receipt'] = got_receipt
-                        if pdf_hdr: form_data['pdf_header'] = pdf_hdr
-                        if pdf_toggle: form_data['pdf_toggle_possible'] = pdf_toggle
-                        if magic: form_data['magic_num'] = magic
-                        if hdr: form_data['hdr'] = hdr
-                        if psf: form_data['psf_report'] = psf
+                        if caseid:
+                            form_data['caseid'] = caseid
+                        if de_seq:
+                            form_data['de_seq_num'] = de_seq
+                        if got_receipt:
+                            form_data['got_receipt'] = got_receipt
+                        if pdf_hdr:
+                            form_data['pdf_header'] = pdf_hdr
+                        if pdf_toggle:
+                            form_data['pdf_toggle_possible'] = pdf_toggle
+                        if magic:
+                            form_data['magic_num'] = magic
+                        if hdr:
+                            form_data['hdr'] = hdr
+                        if psf:
+                            form_data['psf_report'] = psf
 
                         parsed = urlparse(doc_url)
                         form_url = f"{parsed.scheme}://{parsed.netloc}{path}"

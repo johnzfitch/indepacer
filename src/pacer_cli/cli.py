@@ -62,7 +62,7 @@ COMMAND_ALIASES = {
 
 class AliasGroup(click.Group):
     """Click Group that supports command aliases.
-    
+
     Allows users to use shorter command names that map to full paths.
     Example: 'pacer docket' -> 'pacer download docket'
     """
@@ -315,7 +315,7 @@ def cli(ctx, yes: bool, agent: bool):
     \b
     Short aliases:
       pacer docket   →  pacer download docket
-      pacer doc      →  pacer download document  
+      pacer doc      →  pacer download document
       pacer grep     →  pacer search
       pacer cases    →  pacer pcl cases
       pacer parties  →  pacer pcl parties
