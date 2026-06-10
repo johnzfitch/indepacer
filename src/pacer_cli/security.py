@@ -17,14 +17,18 @@ Addresses all issues from PR #1 and PR #2:
 from __future__ import annotations
 
 import logging
+import re
 import ssl
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Literal, Optional
+from typing import TYPE_CHECKING, Iterator, Literal, Optional
+
+if TYPE_CHECKING:
+    from .config import PacerConfig
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -50,7 +54,7 @@ RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MAX_RETRIES = 3
 BACKOFF_FACTOR = 2.0
 
-# ECDHE-only ciphers — no deprecated DHE
+# ECDHE-only ciphers - no deprecated DHE
 SECURE_CIPHERS = "ECDHE+AESGCM:ECDHE+CHACHA20"
 
 LOG_DIR = Path.home() / ".pacer" / "logs"
@@ -172,7 +176,7 @@ def is_bulk_download(entry_count: int) -> bool:
 def show_peak_hours_warning(entry_count: int = 0) -> None:
     """Print a peak-hours warning if applicable.
 
-    Does not return a value — callers should not depend on a return.
+    Does not return a value - callers should not depend on a return.
     """
     if not is_peak_hours():
         return
@@ -197,7 +201,7 @@ def show_peak_hours_warning(entry_count: int = 0) -> None:
             )
         console.print(Panel(msg, title="[yellow]Peak Hours[/]", border_style="yellow"))
     except ImportError:
-        pass
+        pass  # rich not installed -> skip the cosmetic peak-hours panel
 
 
 # ---------------------------------------------------------------------------
@@ -208,22 +212,36 @@ def show_peak_hours_warning(entry_count: int = 0) -> None:
 class AuditLogger:
     """Append-only audit log for PACER operations."""
 
-    def __init__(self, log_dir: Path = LOG_DIR):
-        self.log_dir = log_dir
+    def __init__(self, log_dir: Optional[Path] = None):
+        # Resolve LOG_DIR at call time (not import) so tests can redirect it.
+        self.log_dir = log_dir if log_dir is not None else LOG_DIR
         self._logger: Optional[logging.Logger] = None
+        self._init_lock = threading.Lock()
 
     def _ensure_logger(self) -> logging.Logger:
-        if self._logger is None:
+        # Fast path - already initialised (no lock needed after first setup).
+        if self._logger is not None:
+            return self._logger
+        with self._init_lock:
+            # Re-check under the lock: another thread may have set _logger
+            # while we were waiting.
+            if self._logger is not None:
+                return self._logger
             self.log_dir.mkdir(parents=True, exist_ok=True)
             log_file = self.log_dir / f"audit-{datetime.now(timezone.utc):%Y-%m}.log"
-            self._logger = logging.getLogger("pacer.audit")
-            self._logger.setLevel(logging.INFO)
-            if not self._logger.handlers:
+            logger = logging.getLogger("pacer.audit")
+            logger.setLevel(logging.INFO)
+            if not logger.handlers:
                 handler = logging.FileHandler(log_file, encoding="utf-8")
-                handler.setFormatter(
-                    logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ")
+                formatter = logging.Formatter(
+                    "%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ"
                 )
-                self._logger.addHandler(handler)
+                # Emit timestamps in true UTC so the trailing "Z" is honest and
+                # spend_today() can bucket lines by UTC calendar day.
+                formatter.converter = time.gmtime
+                handler.setFormatter(formatter)
+                logger.addHandler(handler)
+            self._logger = logger
         return self._logger
 
     def log_request(
@@ -233,6 +251,7 @@ class AuditLogger:
         status_code: Optional[int] = None,
         cost: float = 0.0,
         error: Optional[str] = None,
+        client_code: Optional[str] = None,
     ) -> None:
         logger = self._ensure_logger()
         parts = [f"{method} {url}"]
@@ -240,6 +259,8 @@ class AuditLogger:
             parts.append(f"status={status_code}")
         if cost > 0:
             parts.append(f"cost=${cost:.2f}")
+        if client_code:
+            parts.append(f"client={client_code}")
         if error:
             parts.append(f"error={error}")
         logger.info(" | ".join(parts))
@@ -251,28 +272,238 @@ class AuditLogger:
         size_bytes: int,
         pages: int = 0,
         cost: float = 0.0,
+        client_code: Optional[str] = None,
     ) -> None:
         logger = self._ensure_logger()
-        logger.info(
+        line = (
             f"DOWNLOAD {url} -> {filepath} | "
             f"size={size_bytes} pages={pages} cost=${cost:.2f}"
         )
+        if client_code:
+            line += f" | client={client_code}"
+        logger.info(line)
 
 
 _audit_logger: Optional[AuditLogger] = None
+_audit_logger_lock = threading.Lock()
 
 
 def get_audit_logger() -> AuditLogger:
     global _audit_logger
-    if _audit_logger is None:
-        _audit_logger = AuditLogger()
-    return _audit_logger
+    with _audit_logger_lock:
+        if _audit_logger is None:
+            _audit_logger = AuditLogger()
+        return _audit_logger
 
 
 def reset_audit_logger() -> None:
-    """Reset global audit logger (for test isolation)."""
+    """Reset global audit logger (for test isolation).
+
+    Also detaches handlers from the shared ``pacer.audit`` logging.Logger so a
+    redirected LOG_DIR (e.g. a fresh temp dir per test) takes effect instead of
+    a stale FileHandler pointing at a previous directory.
+    """
     global _audit_logger
-    _audit_logger = None
+    with _audit_logger_lock:
+        _audit_logger = None
+    logger = logging.getLogger("pacer.audit")
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
+
+
+# ---------------------------------------------------------------------------
+# Spend governance - preventive cap, summed from the audit log
+# ---------------------------------------------------------------------------
+
+
+class GovernanceError(Exception):
+    """Base for preventive spend-cap refusals (CLI exits 3 on these)."""
+
+    error_key: str = "budget_exceeded"
+
+    def __init__(self, message: str, **fields: object) -> None:
+        super().__init__(message)
+        self.fields = fields
+
+
+class BudgetError(GovernanceError):
+    """A per-op or daily spend cap would be exceeded."""
+
+    error_key = "budget_exceeded"
+
+
+class MatterRequired(GovernanceError):
+    """policy.csv requires a client/matter code for billable operations."""
+
+    error_key = "matter_required"
+
+
+class ScopeError(GovernanceError):
+    """courts.csv is present but disables every court - refuse rather than
+    silently search nationwide (fail-closed)."""
+
+    error_key = "scope_empty"
+
+
+class MatterInvalid(GovernanceError):
+    """The client/matter code contains unsafe characters or is too long.
+
+    The code is written verbatim into the audit line that doubles as the spend
+    ledger (` | `-delimited) and is sent as the X-CLIENT-CODE header, so a code
+    with a newline/pipe/control char could forge or corrupt ledger rows. Reject
+    it up front (fail-closed) before it reaches either."""
+
+    error_key = "matter_invalid"
+
+
+# PACER client codes are short; allow alphanumerics + a few common separators,
+# capped at 32 chars. Anything else (newline, '|', control chars) is rejected.
+_MATTER_CODE_RE = re.compile(r"^[A-Za-z0-9 ._/#:-]{1,32}$")
+
+
+def is_valid_matter_code(code: str) -> bool:
+    """True if ``code`` is a safe client/matter code (see _MATTER_CODE_RE)."""
+    return bool(_MATTER_CODE_RE.match(code))
+
+
+def spend_today(client_code: Optional[str] = None) -> float:
+    """Sum today's billed cost (UTC calendar day) from the current audit log.
+
+    Reads the same append-only log AuditLogger writes - no separate store. Uses
+    the ``cost=$N`` token each billable call records. When ``client_code`` is
+    given, only lines tagged ``client=<code>`` are counted.
+    """
+    log_file = LOG_DIR / f"audit-{datetime.now(timezone.utc):%Y-%m}.log"
+    if not log_file.exists():
+        return 0.0
+    today = f"{datetime.now(timezone.utc):%Y-%m-%d}"
+    total = 0.0
+    for line in log_file.read_text(encoding="utf-8").splitlines():
+        if not line.startswith(today) or "cost=$" not in line:
+            continue
+        if client_code is not None:
+            # Exact field match on the " | "-delimited log so one client code
+            # can't match another it's a prefix of (e.g. M-1 vs M-10).
+            tokens = [t.strip() for t in line.split("|")]
+            if f"client={client_code}" not in tokens:
+                continue
+        try:
+            _, _, cost_part = line.partition("cost=$")
+            total += float(cost_part.split(maxsplit=1)[0])
+        except (IndexError, ValueError):
+            continue
+    return round(total, 2)
+
+
+def check_spend(
+    config: "PacerConfig",
+    estimated_cost: float,
+    *,
+    prior_spend: float,
+    client_code: Optional[str] = None,
+) -> None:
+    """Pure, side-effect-free preventive cap check.
+
+    Raises a :class:`GovernanceError` subclass when ``estimated_cost`` would
+    breach a cap; returns ``None`` when the operation is within policy. Ctx-free
+    so both the CLI gate and the MCP server share one enforcement path.
+
+    ``config`` is duck-typed (reads ``require_client_code``/``per_op_cap_usd``/
+    ``daily_cap_usd``) to avoid a ``config <-> security`` import cycle.
+    """
+    if config.require_client_code and not client_code:
+        raise MatterRequired(
+            "a client/matter code is required for billable operations",
+            client_code=client_code,
+        )
+    if client_code and not is_valid_matter_code(client_code):
+        raise MatterInvalid(
+            "client/matter code has unsafe characters or exceeds 32 chars",
+            client_code=client_code,
+        )
+    if estimated_cost > config.per_op_cap_usd:
+        raise BudgetError(
+            "operation exceeds the per-operation spend cap",
+            estimated=round(estimated_cost, 2),
+            per_op_cap=config.per_op_cap_usd,
+        )
+    if prior_spend + estimated_cost > config.daily_cap_usd:
+        raise BudgetError(
+            "operation would exceed the daily spend cap",
+            estimated=round(estimated_cost, 2),
+            spent_today=round(prior_spend, 2),
+            daily_cap=config.daily_cap_usd,
+        )
+
+
+class SpendLockTimeout(GovernanceError):
+    """Could not acquire the spend lock in time — refuse rather than risk a
+    concurrent overspend (fail-closed)."""
+
+    error_key = "spend_locked"
+
+
+# Serializes the read-check-record critical section so two concurrent billable
+# ops can't both read the same "spent today", both pass the cap, and both bill
+# (a check-then-act TOCTOU). In-process threading.Lock covers threads; an flock
+# on a sibling lockfile covers separate processes / MCP connections sharing one
+# ~/.pacer. The lock is held across the network op, so the cap is a hard cap
+# under concurrency at the cost of serializing concurrent billable ops.
+_spend_thread_lock = threading.RLock()  # reentrant: same-thread nesting won't deadlock
+_spend_depth = 0  # per-process reentrancy depth (guarded by _spend_thread_lock)
+_spend_fd = None  # the flock'd fd, held while depth > 0
+SPEND_LOCKFILE = LOG_DIR / ".spend.lock"
+
+
+@contextmanager
+def spend_lock(timeout: float = 30.0) -> "Iterator[None]":
+    """Hold the cross-process + in-process spend lock for a billable op.
+
+    Reentrant within a process: the cross-process flock is taken only on the
+    outermost acquire (a second fd would self-conflict). Acquire is bounded by
+    ``timeout``; on timeout we raise (fail-closed) rather than proceed
+    unserialized. The OS releases the flock if the process dies mid-op."""
+    global _spend_depth, _spend_fd
+    deadline = time.monotonic() + timeout
+    if not _spend_thread_lock.acquire(timeout=timeout):
+        raise SpendLockTimeout("timed out acquiring the in-process spend lock")
+    try:
+        if _spend_depth == 0:
+            try:
+                import fcntl  # POSIX only; absent on Windows -> in-process lock only
+            except ImportError:
+                fcntl = None
+            if fcntl is not None:
+                SPEND_LOCKFILE.parent.mkdir(parents=True, exist_ok=True)
+                fd = open(SPEND_LOCKFILE, "w")
+                while True:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except OSError:
+                        if time.monotonic() > deadline:
+                            fd.close()
+                            raise SpendLockTimeout(
+                                "timed out acquiring the cross-process spend lock"
+                            )
+                        time.sleep(0.05)
+                _spend_fd = fd
+        _spend_depth += 1
+        try:
+            yield
+        finally:
+            _spend_depth -= 1
+            if _spend_depth == 0 and _spend_fd is not None:
+                try:
+                    import fcntl
+                    fcntl.flock(_spend_fd, fcntl.LOCK_UN)
+                except Exception:
+                    pass  # best-effort; close()/process-exit releases it anyway
+                _spend_fd.close()
+                _spend_fd = None
+    finally:
+        _spend_thread_lock.release()
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +546,7 @@ class StreamingDownload:
             try:
                 self.response.close()
             except OSError:
-                pass
+                pass  # best-effort cleanup; socket already broken is harmless
             self._closed = True
 
     def __enter__(self) -> "StreamingDownload":
@@ -362,7 +593,7 @@ def safe_response_content(response: requests.Response, max_size: int = MAX_MEMOR
                     f"Response Content-Length {content_length} exceeds limit {max_size}"
                 )
         except ValueError:
-            pass
+            pass  # non-integer Content-Length -> fall through to chunked reads
 
     # Use chunked read to enforce limit
     chunks: list[bytes] = []

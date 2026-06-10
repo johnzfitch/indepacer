@@ -21,7 +21,7 @@ pip install 'pacer-cli[full]'
 ## ![checkbox](icons/checkbox.png) Quick Start
 
 ```bash
-# 1. Configure credentials (interactive wizard — sets up encrypted vault)
+# 1. Configure credentials (interactive wizard - sets up encrypted vault)
 pacer auth init
 
 # 2. Search for cases (costs $0.10/page)
@@ -76,9 +76,11 @@ pacer pcl cases -t "IBM" -c nysd -i
 
 ```
 pacer [OPTIONS] COMMAND
-  -y, --yes    Skip cost confirmation prompts
-  --version    Show version
-  --help       Show help
+  -y, --yes      Skip cost confirmation prompts
+  --agent        Non-interactive mode for AI agents (JSON errors, exit 3 on a cap)
+  --matter CODE  Client/matter code for a billable command (alias: --client-code)
+  --version      Show version
+  --help         Show help
 ```
 
 **Cost confirmation:** By default, commands that incur PACER charges prompt for confirmation. Use `-y` to skip:
@@ -87,6 +89,66 @@ pacer [OPTIONS] COMMAND
 pacer download docket 1:18-cv-08434 nysd      # prompts: "Proceed? [Y/n]"
 pacer -y download docket 1:18-cv-08434 nysd   # no prompt
 ```
+
+---
+
+## Spend Governance (preventive cap)
+
+A real-time, **fail-closed** spend cap safe to put in front of an autonomous agent.
+Every billable call is checked *before* it runs and logged after, so cumulative spend
+can't drift past a limit. Caps live in a lawyer-editable CSV and are tagged to PACER's
+native client/matter code.
+
+**`~/.pacer/config/policy.csv`** (see [`examples/policy.csv`](examples/policy.csv)):
+
+```csv
+Setting,Value
+Max spend per search ($),5.00
+Max spend per day ($),50.00
+Require client/matter code,Yes
+```
+
+- **Missing file** → conservative built-in caps (per-op $1.00, daily $10.00). Never uncapped.
+- **Blank cell** → keeps the safe default (a blank cap is *not* "unlimited").
+- **Unparseable cell** (e.g. `fifty`) → billable ops refuse and name the row; read-only commands still run.
+- Caps change **only** by editing the CSV (a human). Nothing in agent mode writes it, so an agent can't widen its own leash.
+
+When a cap is hit, the command exits **3** (distinct from auth/network). In `--agent`
+mode the refusal is JSON on stderr:
+
+```bash
+$ pacer --agent pcl cases -n 1:20-cv-1
+{"error": "BUDGET_EXCEEDED", "operation": "Search cases", "estimated": 0.1, "spent_today": 9.95, "daily_cap": 10.0}
+```
+
+**Client/matter code** lands on the bill via PACER's `X-CLIENT-CODE` header, so charges
+reconcile against the firm's quarterly PAA statement with no parallel accounting:
+
+```bash
+pacer --matter MATTER-1234 pcl cases -t "Acme"
+```
+
+### Agent mode & credentials
+
+`--agent` (auto-detected when there's no TTY) makes the CLI non-interactive: JSON errors,
+no prompts. **Login stays human-in-the-loop** - agent mode never prompts for or
+auto-unlocks the vault; it uses human-provisioned `PACER_USERNAME`/`PACER_PASSWORD`
+(env or `config.env`).
+
+### Court scoping
+
+A firm that practices in a few districts shouldn't pay for nationwide PCL hits. Scope
+searches via **`~/.pacer/config/courts.csv`** (human-edited, agent-read-only):
+
+```bash
+pacer courts disable-all
+pacer courts enable cand nysd        # only these courts
+pacer courts status
+pacer courts invert                  # flip every flag ("enable the rest")
+```
+
+Enabled courts flow into `pcl cases` / `pcl parties` automatically (an explicit
+`--court` still wins). All courts enabled, or no file, means nationwide.
 
 ---
 
@@ -164,7 +226,7 @@ Options:
 # Show current code
 pacer auth code
 
-# Watch mode — stays open, refreshes automatically
+# Watch mode - stays open, refreshes automatically
 pacer auth code --watch
 ```
 
@@ -863,6 +925,37 @@ text = parse_docket_file(Path("docket.html"), "compact")
 
 ---
 
+## MCP Server (for AI agents)
+
+PACER, exposed over the [Model Context Protocol](https://modelcontextprotocol.io) - the
+governed client behind a tool interface. Every billable tool routes through the **same
+preventive cap** as the CLI and writes the same audit line, so an MCP-driven agent obeys
+one cap and leaves one trail. A read-only `spend_status` tool/resource lets the agent see
+its remaining budget.
+
+```bash
+pip install -e '.[mcp]'     # optional extra; keeps the core CLI dependency-light
+pacer-mcp                   # runs a local stdio server (bring your own credentials)
+```
+
+Register it with a desktop MCP client (e.g. Claude Desktop `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "pacer": { "command": "pacer-mcp" }
+  }
+}
+```
+
+Tools: `search_cases`, `search_parties`, `get_docket`, `get_document` (all billable, all
+capped) and `spend_status` (read-only). A cap breach returns a structured error mirroring
+the CLI's JSON. Same invariants: credentials are human-provisioned (env / `config.env`);
+the server never prompts, never auto-unlocks the vault, and never writes `policy.csv` /
+`courts.csv`.
+
+---
+
 ## ![warning](icons/warning.png) Costs
 
 PACER charges per page viewed:
@@ -885,7 +978,7 @@ PACER charges per page viewed:
 
 pacer-cli includes a security module (`security.py`) that protects your account and federal court system resources:
 
-- **Encrypted credential vault** — AES-256-GCM encryption with Scrypt key derivation (see below)
+- **Encrypted credential vault** - AES-256-GCM encryption with Scrypt key derivation (see below)
 - **TLS 1.2+ enforcement** with ECDHE-only cipher suites (no deprecated DHE)
 - **Rate limiting** (30 req/min default, configurable) to stay within PACER guidelines
 - **Peak hours detection** (6AM-6PM Central, DST-aware via `zoneinfo`) with bulk download warnings

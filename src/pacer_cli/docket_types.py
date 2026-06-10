@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, asdict
-from datetime import date
 from typing import Optional
 
 
@@ -175,7 +174,7 @@ class ParsedDocket:
                 atty_list = ", ".join(a.name for a in party.attorneys) if party.attorneys else "(none)"
                 lines.append(f"- **{party.role}:** {party.name}")
                 if party.pro_se:
-                    lines.append(f"  - *Pro Se*")
+                    lines.append("  - *Pro Se*")
                 else:
                     lines.append(f"  - Attorneys: {atty_list}")
 

@@ -44,14 +44,19 @@ full = [
     "beautifulsoup4>=4.12",
     "html5lib>=1.1",
 ]
+mcp = [
+    "mcp>=1.2",  # Model Context Protocol SDK (stdio server). Optional: keeps the core CLI dependency-light.
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "ruff>=0.1",
+    "pyflakes>=3.0",
 ]
 
 [project.scripts]
 pacer = "pacer_cli.cli:cli"
+pacer-mcp = "pacer_cli.mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/johnzfitch/pacer-cli"
@@ -65,6 +70,20 @@ packages = ["src/pacer_cli"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["pacer_cli"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "\\.\\.\\.",
+]
 
 [tool.ruff]
 line-length = 100
