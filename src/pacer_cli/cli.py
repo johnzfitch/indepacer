@@ -1,6 +1,7 @@
 """PACER CLI - Command-line interface for legal document research."""
 
 import csv
+import functools
 import json
 import re
 import sys
@@ -34,6 +35,7 @@ from .security import (
     check_spend,
     get_audit_logger,
     show_peak_hours_warning,
+    spend_lock,
     spend_today,
 )
 
@@ -275,6 +277,21 @@ def matter_option(f):
         default=None,
         help="PACER client/matter code (lands on the bill via X-CLIENT-CODE).",
     )(f)
+
+
+def under_spend_lock(f):
+    """Hold the cross-process spend lock for the whole billable command.
+
+    Each CLI invocation is one billable op per process, so holding the lock for
+    the command makes its read-check-bill-record sequence atomic against other
+    concurrent pacer processes — closing the check-then-act TOCTOU on the cap.
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        with spend_lock():
+            return f(*args, **kwargs)
+
+    return wrapper
 
 
 @click.group(cls=AliasGroup)
@@ -1020,6 +1037,7 @@ def download():
 @click.option("--legacy", is_flag=True, help="Use legacy flat archive structure")
 @matter_option
 @click.pass_context
+@under_spend_lock
 def download_docket_cmd(
     ctx,
     case_number: Optional[str],
@@ -1145,6 +1163,7 @@ def download_docket_cmd(
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose/trace logging")
 @matter_option
 @click.pass_context
+@under_spend_lock
 def download_document(ctx, doc_number: str, doc_link: Optional[str], verbose: bool, client_code: Optional[str]):
     """Download a single document from a case.
 
@@ -1419,6 +1438,7 @@ def view_case(
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose/trace logging")
 @matter_option
 @click.pass_context
+@under_spend_lock
 def download_batch(ctx, csv_file: Path, column_court: str, column_case: str, verbose: bool, client_code: Optional[str]):
     """Download multiple dockets from a CSV file.
 
@@ -1941,6 +1961,7 @@ def pcl():
 @click.option("--interactive", "-i", is_flag=True, help="Enable interactive case selection")
 @matter_option
 @click.pass_context
+@under_spend_lock
 def pcl_cases(
     ctx,
     case_number,
@@ -2232,6 +2253,7 @@ def _handle_case_action(ctx, config: PacerConfig, case, action: str):
 @click.option("--output", "-o", type=click.Path(path_type=Path), help="Output file")
 @matter_option
 @click.pass_context
+@under_spend_lock
 def pcl_parties(
     ctx,
     last_name,

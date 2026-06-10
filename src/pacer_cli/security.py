@@ -216,14 +216,22 @@ class AuditLogger:
         # Resolve LOG_DIR at call time (not import) so tests can redirect it.
         self.log_dir = log_dir if log_dir is not None else LOG_DIR
         self._logger: Optional[logging.Logger] = None
+        self._init_lock = threading.Lock()
 
     def _ensure_logger(self) -> logging.Logger:
-        if self._logger is None:
+        # Fast path - already initialised (no lock needed after first setup).
+        if self._logger is not None:
+            return self._logger
+        with self._init_lock:
+            # Re-check under the lock: another thread may have set _logger
+            # while we were waiting.
+            if self._logger is not None:
+                return self._logger
             self.log_dir.mkdir(parents=True, exist_ok=True)
             log_file = self.log_dir / f"audit-{datetime.now(timezone.utc):%Y-%m}.log"
-            self._logger = logging.getLogger("pacer.audit")
-            self._logger.setLevel(logging.INFO)
-            if not self._logger.handlers:
+            logger = logging.getLogger("pacer.audit")
+            logger.setLevel(logging.INFO)
+            if not logger.handlers:
                 handler = logging.FileHandler(log_file, encoding="utf-8")
                 formatter = logging.Formatter(
                     "%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ"
@@ -232,7 +240,8 @@ class AuditLogger:
                 # spend_today() can bucket lines by UTC calendar day.
                 formatter.converter = time.gmtime
                 handler.setFormatter(formatter)
-                self._logger.addHandler(handler)
+                logger.addHandler(handler)
+            self._logger = logger
         return self._logger
 
     def log_request(
@@ -276,13 +285,15 @@ class AuditLogger:
 
 
 _audit_logger: Optional[AuditLogger] = None
+_audit_logger_lock = threading.Lock()
 
 
 def get_audit_logger() -> AuditLogger:
     global _audit_logger
-    if _audit_logger is None:
-        _audit_logger = AuditLogger()
-    return _audit_logger
+    with _audit_logger_lock:
+        if _audit_logger is None:
+            _audit_logger = AuditLogger()
+        return _audit_logger
 
 
 def reset_audit_logger() -> None:
@@ -293,7 +304,8 @@ def reset_audit_logger() -> None:
     a stale FileHandler pointing at a previous directory.
     """
     global _audit_logger
-    _audit_logger = None
+    with _audit_logger_lock:
+        _audit_logger = None
     logger = logging.getLogger("pacer.audit")
     for handler in list(logger.handlers):
         handler.close()
@@ -423,6 +435,75 @@ def check_spend(
             spent_today=round(prior_spend, 2),
             daily_cap=config.daily_cap_usd,
         )
+
+
+class SpendLockTimeout(GovernanceError):
+    """Could not acquire the spend lock in time — refuse rather than risk a
+    concurrent overspend (fail-closed)."""
+
+    error_key = "spend_locked"
+
+
+# Serializes the read-check-record critical section so two concurrent billable
+# ops can't both read the same "spent today", both pass the cap, and both bill
+# (a check-then-act TOCTOU). In-process threading.Lock covers threads; an flock
+# on a sibling lockfile covers separate processes / MCP connections sharing one
+# ~/.pacer. The lock is held across the network op, so the cap is a hard cap
+# under concurrency at the cost of serializing concurrent billable ops.
+_spend_thread_lock = threading.RLock()  # reentrant: same-thread nesting won't deadlock
+_spend_depth = 0  # per-process reentrancy depth (guarded by _spend_thread_lock)
+_spend_fd = None  # the flock'd fd, held while depth > 0
+SPEND_LOCKFILE = LOG_DIR / ".spend.lock"
+
+
+@contextmanager
+def spend_lock(timeout: float = 30.0) -> "Iterator[None]":
+    """Hold the cross-process + in-process spend lock for a billable op.
+
+    Reentrant within a process: the cross-process flock is taken only on the
+    outermost acquire (a second fd would self-conflict). Acquire is bounded by
+    ``timeout``; on timeout we raise (fail-closed) rather than proceed
+    unserialized. The OS releases the flock if the process dies mid-op."""
+    global _spend_depth, _spend_fd
+    deadline = time.monotonic() + timeout
+    if not _spend_thread_lock.acquire(timeout=timeout):
+        raise SpendLockTimeout("timed out acquiring the in-process spend lock")
+    try:
+        if _spend_depth == 0:
+            try:
+                import fcntl  # POSIX only; absent on Windows -> in-process lock only
+            except ImportError:
+                fcntl = None
+            if fcntl is not None:
+                SPEND_LOCKFILE.parent.mkdir(parents=True, exist_ok=True)
+                fd = open(SPEND_LOCKFILE, "w")
+                while True:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except OSError:
+                        if time.monotonic() > deadline:
+                            fd.close()
+                            raise SpendLockTimeout(
+                                "timed out acquiring the cross-process spend lock"
+                            )
+                        time.sleep(0.05)
+                _spend_fd = fd
+        _spend_depth += 1
+        try:
+            yield
+        finally:
+            _spend_depth -= 1
+            if _spend_depth == 0 and _spend_fd is not None:
+                try:
+                    import fcntl
+                    fcntl.flock(_spend_fd, fcntl.LOCK_UN)
+                except Exception:
+                    pass  # best-effort; close()/process-exit releases it anyway
+                _spend_fd.close()
+                _spend_fd = None
+    finally:
+        _spend_thread_lock.release()
 
 
 # ---------------------------------------------------------------------------

@@ -29,6 +29,14 @@ ERRORS = {
             "Check today's spend in [cyan]~/.pacer/logs/[/]",
         ],
     ),
+    "spend_locked": ErrorContext(
+        title="Spend Lock Busy",
+        message="Another billable operation holds the spend lock; refused rather than risk a concurrent overspend.",
+        suggestions=[
+            "Retry in a moment — a concurrent op is finishing.",
+            "If this persists, a stuck process may hold ~/.pacer/logs/.spend.lock",
+        ],
+    ),
     "matter_required": ErrorContext(
         title="Client/Matter Code Required",
         message="policy.csv requires a client/matter code for billable operations.",
