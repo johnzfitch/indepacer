@@ -9,7 +9,6 @@ For MFA-enabled accounts, you can either:
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 import requests
 
@@ -21,8 +20,8 @@ class AuthResult:
     """Result of PACER authentication attempt."""
 
     success: bool
-    token: Optional[str] = None  # nextGenCSO 128-byte token
-    error: Optional[str] = None
+    token: str | None = None  # nextGenCSO 128-byte token
+    error: str | None = None
     login_result: str = ""
 
 
@@ -41,7 +40,7 @@ def generate_totp(secret: str) -> str:
 
 def authenticate(
     config: PacerConfig,
-    otp_code: Optional[str] = None,
+    otp_code: str | None = None,
 ) -> AuthResult:
     """Authenticate with PACER and get session token.
 
@@ -152,7 +151,7 @@ def logout(config: PacerConfig, token: str) -> bool:
         return False
 
 
-def test_credentials(config: PacerConfig, otp_code: Optional[str] = None) -> AuthResult:
+def test_credentials(config: PacerConfig, otp_code: str | None = None) -> AuthResult:
     """Test PACER credentials without keeping the session.
 
     Authenticates and immediately logs out to verify credentials work.

@@ -16,8 +16,8 @@ except ImportError:
     HAS_SELECTOLAX = False
 
 from .docket_types import (
-    DocketMeta,
     DocketEntry,
+    DocketMeta,
     ParsedDocket,
 )
 
@@ -86,7 +86,7 @@ def parse_docket_selectolax(html: str) -> ParsedDocket:
             # Left column (60%)
             if 'v.' in cell_text or 'v ' in cell_text:
                 # First line is case title
-                lines = [l.strip() for l in cell_text.split('\n') if l.strip()]
+                lines = [ln.strip() for ln in cell_text.split('\n') if ln.strip()]
                 if lines:
                     case_title = lines[0]
 

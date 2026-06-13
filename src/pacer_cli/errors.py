@@ -1,7 +1,6 @@
 """User-friendly error handling with actionable next steps."""
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
@@ -15,8 +14,8 @@ class ErrorContext:
 
     title: str
     message: str
-    suggestions: List[str]
-    docs_link: Optional[str] = None
+    suggestions: list[str]
+    docs_link: str | None = None
 
 
 # Error catalog
@@ -31,7 +30,10 @@ ERRORS = {
     ),
     "spend_locked": ErrorContext(
         title="Spend Lock Busy",
-        message="Another billable operation holds the spend lock; refused rather than risk a concurrent overspend.",
+        message=(
+            "Another billable operation holds the spend lock; refused rather "
+            "than risk a concurrent overspend."
+        ),
         suggestions=[
             "Retry in a moment — a concurrent op is finishing.",
             "If this persists, a stuck process may hold ~/.pacer/logs/.spend.lock",
@@ -47,7 +49,10 @@ ERRORS = {
     ),
     "policy_invalid": ErrorContext(
         title="Policy File Unparseable",
-        message="A value in policy.csv could not be parsed; billable ops are blocked (fail-closed).",
+        message=(
+            "A value in policy.csv could not be parsed; billable ops are "
+            "blocked (fail-closed)."
+        ),
         suggestions=[
             "Fix the offending row in [cyan]~/.pacer/config/policy.csv[/]",
             "Dollar caps must be plain numbers, e.g. [cyan]5.00[/]",
@@ -63,7 +68,10 @@ ERRORS = {
     ),
     "scope_empty": ErrorContext(
         title="No Courts In Scope",
-        message="courts.csv disables every court, so this search has no courts to run against (refused fail-closed instead of searching nationwide).",
+        message=(
+            "courts.csv disables every court, so this search has no courts to "
+            "run against (refused fail-closed instead of searching nationwide)."
+        ),
         suggestions=[
             "Enable at least one court: [cyan]pacer courts enable cand nysd[/]",
             "Or clear the scope to search nationwide: [cyan]pacer courts enable-all[/]",
@@ -171,8 +179,8 @@ ERRORS = {
 
 def show_error(
     error_key: str,
-    detail: Optional[str] = None,
-    extra_suggestions: Optional[List[str]] = None,
+    detail: str | None = None,
+    extra_suggestions: list[str] | None = None,
 ):
     """Display a rich error panel with suggestions.
 
@@ -207,7 +215,7 @@ def show_error(
     )
 
 
-def classify_pcl_error(error: Exception) -> Tuple[str, str]:
+def classify_pcl_error(error: Exception) -> tuple[str, str]:
     """Classify PCL exceptions to error keys.
 
     Args:
@@ -237,7 +245,7 @@ def classify_pcl_error(error: Exception) -> Tuple[str, str]:
         return "network_error", error_str
 
 
-def classify_download_error(error_message: str) -> Tuple[str, str]:
+def classify_download_error(error_message: str) -> tuple[str, str]:
     """Classify download error messages to error keys.
 
     Args:

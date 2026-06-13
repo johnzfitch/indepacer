@@ -30,16 +30,16 @@ class SearchCriteriaMixin:
 class Receipt(BaseModel):
     """Billing receipt from a PCL search."""
 
-    transaction_date: Optional[str] = Field(None, alias="transactionDate")
+    transaction_date: str | None = Field(None, alias="transactionDate")
     billable_pages: int = Field(0, alias="billablePages")
-    login_id: Optional[str] = Field(None, alias="loginId")
-    client_code: Optional[str] = Field(None, alias="clientCode")
-    firm_id: Optional[str] = Field(None, alias="firmId")
-    search: Optional[str] = None
-    description: Optional[str] = None
-    cso_id: Optional[int] = Field(None, alias="csoId")
-    report_id: Optional[str] = Field(None, alias="reportId")
-    search_fee: Optional[str] = Field(None, alias="searchFee")
+    login_id: str | None = Field(None, alias="loginId")
+    client_code: str | None = Field(None, alias="clientCode")
+    firm_id: str | None = Field(None, alias="firmId")
+    search: str | None = None
+    description: str | None = None
+    cso_id: int | None = Field(None, alias="csoId")
+    report_id: str | None = Field(None, alias="reportId")
+    search_fee: str | None = Field(None, alias="searchFee")
 
     @property
     def fee_cents(self) -> int:
@@ -67,26 +67,26 @@ class PageInfo(BaseModel):
 class CourtCase(BaseModel):
     """Court case information (nested in party results or standalone)."""
 
-    court_id: Optional[str] = Field(None, alias="courtId")
-    case_id: Optional[int] = Field(None, alias="caseId")
-    case_year: Optional[int] = Field(None, alias="caseYear")
-    case_number: Optional[int] = Field(None, alias="caseNumber")
-    case_office: Optional[str] = Field(None, alias="caseOffice")
-    case_type: Optional[str] = Field(None, alias="caseType")
-    case_title: Optional[str] = Field(None, alias="caseTitle")
-    date_filed: Optional[str] = Field(None, alias="dateFiled")
-    date_termed: Optional[str] = Field(None, alias="dateTermed")
-    date_dismissed: Optional[str] = Field(None, alias="dateDismissed")
-    date_discharged: Optional[str] = Field(None, alias="dateDischarged")
-    effective_date_closed: Optional[str] = Field(None, alias="effectiveDateClosed")
-    nature_of_suit: Optional[str] = Field(None, alias="natureOfSuit")
-    bankruptcy_chapter: Optional[str] = Field(None, alias="bankruptcyChapter")
-    disposition_method: Optional[str] = Field(None, alias="dispositionMethod")
-    joint_bankruptcy_flag: Optional[str] = Field(None, alias="jointBankruptcyFlag")
-    jurisdiction_type: Optional[str] = Field(None, alias="jurisdictionType")
-    case_link: Optional[str] = Field(None, alias="caseLink")
-    case_number_full: Optional[str] = Field(None, alias="caseNumberFull")
-    jpml_number: Optional[int] = Field(None, alias="jpmlNumber")
+    court_id: str | None = Field(None, alias="courtId")
+    case_id: int | None = Field(None, alias="caseId")
+    case_year: int | None = Field(None, alias="caseYear")
+    case_number: int | None = Field(None, alias="caseNumber")
+    case_office: str | None = Field(None, alias="caseOffice")
+    case_type: str | None = Field(None, alias="caseType")
+    case_title: str | None = Field(None, alias="caseTitle")
+    date_filed: str | None = Field(None, alias="dateFiled")
+    date_termed: str | None = Field(None, alias="dateTermed")
+    date_dismissed: str | None = Field(None, alias="dateDismissed")
+    date_discharged: str | None = Field(None, alias="dateDischarged")
+    effective_date_closed: str | None = Field(None, alias="effectiveDateClosed")
+    nature_of_suit: str | None = Field(None, alias="natureOfSuit")
+    bankruptcy_chapter: str | None = Field(None, alias="bankruptcyChapter")
+    disposition_method: str | None = Field(None, alias="dispositionMethod")
+    joint_bankruptcy_flag: str | None = Field(None, alias="jointBankruptcyFlag")
+    jurisdiction_type: str | None = Field(None, alias="jurisdictionType")
+    case_link: str | None = Field(None, alias="caseLink")
+    case_number_full: str | None = Field(None, alias="caseNumberFull")
+    jpml_number: int | None = Field(None, alias="jpmlNumber")
 
     @property
     def status(self) -> str:
@@ -109,30 +109,30 @@ class CaseResult(CourtCase):
 class PartyResult(BaseModel):
     """Party search result."""
 
-    court_id: Optional[str] = Field(None, alias="courtId")
-    case_id: Optional[int] = Field(None, alias="caseId")
-    case_year: Optional[int] = Field(None, alias="caseYear")
-    case_number: Optional[int] = Field(None, alias="caseNumber")
-    last_name: Optional[str] = Field(None, alias="lastName")
-    first_name: Optional[str] = Field(None, alias="firstName")
-    middle_name: Optional[str] = Field(None, alias="middleName")
-    generation: Optional[str] = None
-    party_type: Optional[str] = Field(None, alias="partyType")
-    party_role: Optional[str] = Field(None, alias="partyRole")
-    jurisdiction_type: Optional[str] = Field(None, alias="jurisdictionType")
-    court_case: Optional[CourtCase] = Field(None, alias="courtCase")
+    court_id: str | None = Field(None, alias="courtId")
+    case_id: int | None = Field(None, alias="caseId")
+    case_year: int | None = Field(None, alias="caseYear")
+    case_number: int | None = Field(None, alias="caseNumber")
+    last_name: str | None = Field(None, alias="lastName")
+    first_name: str | None = Field(None, alias="firstName")
+    middle_name: str | None = Field(None, alias="middleName")
+    generation: str | None = None
+    party_type: str | None = Field(None, alias="partyType")
+    party_role: str | None = Field(None, alias="partyRole")
+    jurisdiction_type: str | None = Field(None, alias="jurisdictionType")
+    court_case: CourtCase | None = Field(None, alias="courtCase")
     # Denormalized case fields (also present at party level)
-    date_filed: Optional[str] = Field(None, alias="dateFiled")
-    effective_date_closed: Optional[str] = Field(None, alias="effectiveDateClosed")
-    date_dismissed: Optional[str] = Field(None, alias="dateDismissed")
-    date_discharged: Optional[str] = Field(None, alias="dateDischarged")
-    nature_of_suit: Optional[str] = Field(None, alias="natureOfSuit")
-    bankruptcy_chapter: Optional[str] = Field(None, alias="bankruptcyChapter")
-    case_office: Optional[str] = Field(None, alias="caseOffice")
-    case_type: Optional[str] = Field(None, alias="caseType")
-    case_title: Optional[str] = Field(None, alias="caseTitle")
-    case_number_full: Optional[str] = Field(None, alias="caseNumberFull")
-    disposition: Optional[str] = None
+    date_filed: str | None = Field(None, alias="dateFiled")
+    effective_date_closed: str | None = Field(None, alias="effectiveDateClosed")
+    date_dismissed: str | None = Field(None, alias="dateDismissed")
+    date_discharged: str | None = Field(None, alias="dateDischarged")
+    nature_of_suit: str | None = Field(None, alias="natureOfSuit")
+    bankruptcy_chapter: str | None = Field(None, alias="bankruptcyChapter")
+    case_office: str | None = Field(None, alias="caseOffice")
+    case_type: str | None = Field(None, alias="caseType")
+    case_title: str | None = Field(None, alias="caseTitle")
+    case_number_full: str | None = Field(None, alias="caseNumberFull")
+    disposition: str | None = None
 
     @property
     def full_name(self) -> str:
@@ -152,19 +152,19 @@ class PartyResult(BaseModel):
 class CaseSearchResponse(BaseModel):
     """Response from case search API."""
 
-    receipt: Optional[Receipt] = None
-    page_info: Optional[PageInfo] = Field(None, alias="pageInfo")
+    receipt: Receipt | None = None
+    page_info: PageInfo | None = Field(None, alias="pageInfo")
     content: list[CaseResult] = []
-    master_case: Optional[Any] = Field(None, alias="masterCase")
+    master_case: Any | None = Field(None, alias="masterCase")
 
 
 class PartySearchResponse(BaseModel):
     """Response from party search API."""
 
-    receipt: Optional[Receipt] = None
-    page_info: Optional[PageInfo] = Field(None, alias="pageInfo")
+    receipt: Receipt | None = None
+    page_info: PageInfo | None = Field(None, alias="pageInfo")
     content: list[PartyResult] = []
-    master_case: Optional[Any] = Field(None, alias="masterCase")
+    master_case: Any | None = Field(None, alias="masterCase")
 
 
 # =============================================================================
@@ -178,29 +178,29 @@ class CaseSearchCriteria(SearchCriteriaMixin, BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     # All court types
-    jurisdiction_type: Optional[str] = Field(None, alias="jurisdictionType")
-    case_id: Optional[int] = Field(None, alias="caseId")
-    case_number_full: Optional[str] = Field(None, alias="caseNumberFull")
-    case_title: Optional[str] = Field(None, alias="caseTitle")
-    case_office: Optional[str] = Field(None, alias="caseOffice")
-    case_number: Optional[str] = Field(None, alias="caseNumber")
-    case_type: Optional[list[str]] = Field(None, alias="caseType")
-    case_year: Optional[str] = Field(None, alias="caseYear")
-    court_id: Optional[list[str]] = Field(None, alias="courtId")
-    date_filed_from: Optional[str] = Field(None, alias="dateFiledFrom")
-    date_filed_to: Optional[str] = Field(None, alias="dateFiledTo")
-    effective_date_closed_from: Optional[str] = Field(None, alias="effectiveDateClosedFrom")
-    effective_date_closed_to: Optional[str] = Field(None, alias="effectiveDateClosedTo")
+    jurisdiction_type: str | None = Field(None, alias="jurisdictionType")
+    case_id: int | None = Field(None, alias="caseId")
+    case_number_full: str | None = Field(None, alias="caseNumberFull")
+    case_title: str | None = Field(None, alias="caseTitle")
+    case_office: str | None = Field(None, alias="caseOffice")
+    case_number: str | None = Field(None, alias="caseNumber")
+    case_type: list[str] | None = Field(None, alias="caseType")
+    case_year: str | None = Field(None, alias="caseYear")
+    court_id: list[str] | None = Field(None, alias="courtId")
+    date_filed_from: str | None = Field(None, alias="dateFiledFrom")
+    date_filed_to: str | None = Field(None, alias="dateFiledTo")
+    effective_date_closed_from: str | None = Field(None, alias="effectiveDateClosedFrom")
+    effective_date_closed_to: str | None = Field(None, alias="effectiveDateClosedTo")
     # Bankruptcy only
-    federal_bankruptcy_chapter: Optional[list[str]] = Field(None, alias="federalBankruptcyChapter")
-    date_dismissed_from: Optional[str] = Field(None, alias="dateDismissedFrom")
-    date_dismissed_to: Optional[str] = Field(None, alias="dateDismissedTo")
-    date_discharged_from: Optional[str] = Field(None, alias="dateDischargedFrom")
-    date_discharged_to: Optional[str] = Field(None, alias="dateDischargedTo")
+    federal_bankruptcy_chapter: list[str] | None = Field(None, alias="federalBankruptcyChapter")
+    date_dismissed_from: str | None = Field(None, alias="dateDismissedFrom")
+    date_dismissed_to: str | None = Field(None, alias="dateDismissedTo")
+    date_discharged_from: str | None = Field(None, alias="dateDischargedFrom")
+    date_discharged_to: str | None = Field(None, alias="dateDischargedTo")
     # Civil/Appellate only
-    nature_of_suit: Optional[list[str]] = Field(None, alias="natureOfSuit")
+    nature_of_suit: list[str] | None = Field(None, alias="natureOfSuit")
     # JPML only
-    jpml_number: Optional[int] = Field(None, alias="jpmlNumber")
+    jpml_number: int | None = Field(None, alias="jpmlNumber")
     # Nested party search within case search
     party: Optional["PartyInCaseSearch"] = None
 
@@ -208,10 +208,10 @@ class CaseSearchCriteria(SearchCriteriaMixin, BaseModel):
 class PartyInCaseSearch(BaseModel):
     """Party criteria when nested in a case search."""
 
-    last_name: Optional[str] = Field(None, alias="lastName")
-    first_name: Optional[str] = Field(None, alias="firstName")
-    middle_name: Optional[str] = Field(None, alias="middleName")
-    role: Optional[list[str]] = None
+    last_name: str | None = Field(None, alias="lastName")
+    first_name: str | None = Field(None, alias="firstName")
+    middle_name: str | None = Field(None, alias="middleName")
+    role: list[str] | None = None
 
 
 class PartySearchCriteria(SearchCriteriaMixin, BaseModel):
@@ -220,19 +220,19 @@ class PartySearchCriteria(SearchCriteriaMixin, BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     # Party fields
-    last_name: Optional[str] = Field(None, alias="lastName")
-    first_name: Optional[str] = Field(None, alias="firstName")
-    middle_name: Optional[str] = Field(None, alias="middleName")
-    generation: Optional[str] = None
-    exact_name_match: Optional[bool] = Field(None, alias="exactNameMatch")
-    ssn: Optional[str] = None  # Bankruptcy only
-    party_type: Optional[str] = Field(None, alias="partyType")
-    role: Optional[list[str]] = None
+    last_name: str | None = Field(None, alias="lastName")
+    first_name: str | None = Field(None, alias="firstName")
+    middle_name: str | None = Field(None, alias="middleName")
+    generation: str | None = None
+    exact_name_match: bool | None = Field(None, alias="exactNameMatch")
+    ssn: str | None = None  # Bankruptcy only
+    party_type: str | None = Field(None, alias="partyType")
+    role: list[str] | None = None
     # Case year range
-    case_year_from: Optional[int] = Field(None, alias="caseYearFrom")
-    case_year_to: Optional[int] = Field(None, alias="caseYearTo")
+    case_year_from: int | None = Field(None, alias="caseYearFrom")
+    case_year_to: int | None = Field(None, alias="caseYearTo")
     # Nested case criteria
-    court_case: Optional[CaseSearchCriteria] = Field(None, alias="courtCase")
+    court_case: CaseSearchCriteria | None = Field(None, alias="courtCase")
 
 
 # =============================================================================
@@ -245,14 +245,14 @@ class BatchJobInfo(BaseModel):
 
     report_id: int = Field(..., alias="reportId")
     status: str  # WAITING, RUNNING, COMPLETED
-    start_time: Optional[str] = Field(None, alias="startTime")
-    end_time: Optional[str] = Field(None, alias="endTime")
-    record_count: Optional[int] = Field(None, alias="recordCount")
-    unbilled_page_count: Optional[int] = Field(None, alias="unbilledPageCount")
-    download_fee: Optional[float] = Field(None, alias="downloadFee")
-    pages: Optional[int] = None
-    search_type: Optional[str] = Field(None, alias="searchType")
-    criteria: Optional[dict] = None
+    start_time: str | None = Field(None, alias="startTime")
+    end_time: str | None = Field(None, alias="endTime")
+    record_count: int | None = Field(None, alias="recordCount")
+    unbilled_page_count: int | None = Field(None, alias="unbilledPageCount")
+    download_fee: float | None = Field(None, alias="downloadFee")
+    pages: int | None = None
+    search_type: str | None = Field(None, alias="searchType")
+    criteria: dict | None = None
 
     @property
     def is_complete(self) -> bool:
@@ -268,6 +268,6 @@ class BatchJobInfo(BaseModel):
 class BatchJobListResponse(BaseModel):
     """Response from batch job list API."""
 
-    receipt: Optional[Receipt] = None
-    page_info: Optional[PageInfo] = Field(None, alias="pageInfo")
+    receipt: Receipt | None = None
+    page_info: PageInfo | None = Field(None, alias="pageInfo")
     content: list[BatchJobInfo] = []

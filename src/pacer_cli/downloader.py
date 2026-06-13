@@ -9,7 +9,6 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -24,9 +23,9 @@ from .models import CaseSearchCriteria
 class DownloadResult:
     """Result of a docket download attempt."""
     success: bool
-    filepath: Optional[Path] = None
-    docs_filepath: Optional[Path] = None  # Path to docs.json manifest
-    error: Optional[str] = None
+    filepath: Path | None = None
+    docs_filepath: Path | None = None  # Path to docs.json manifest
+    error: str | None = None
     pages: int = 0
     cost: float = 0.0
 
@@ -90,7 +89,7 @@ def extract_document_metadata(
     }
 
 
-def load_cached_documents(case_dir: Path) -> Optional[dict]:
+def load_cached_documents(case_dir: Path) -> dict | None:
     """Load cached document metadata for a case.
 
     Args:
@@ -105,12 +104,12 @@ def load_cached_documents(case_dir: Path) -> Optional[dict]:
     if docs_path.exists():
         try:
             return json.loads(docs_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             pass  # unreadable docs.json cache -> treat as no cache
     return None
 
 
-def get_document_by_number(case_dir: Path, doc_number: str) -> Optional[dict]:
+def get_document_by_number(case_dir: Path, doc_number: str) -> dict | None:
     """Get document info by number from cached metadata.
 
     Args:
@@ -135,7 +134,7 @@ class DocketDownloader:
         self.config = config
         self.verbose = verbose
         self.session = requests.Session()
-        self.token: Optional[str] = None
+        self.token: str | None = None
 
     def _log(self, msg: str):
         """Print trace message if verbose mode enabled."""
@@ -184,7 +183,10 @@ class DocketDownloader:
             # Extract the ViewState (JSF CSRF token) - both javax and jakarta variants
             viewstate = None
             import re
-            vs_match = re.search(r'name="(?:javax|jakarta)\.faces\.ViewState"[^>]*value="([^"]*)"', resp.text)
+            vs_match = re.search(
+                r'name="(?:javax|jakarta)\.faces\.ViewState"[^>]*value="([^"]*)"',
+                resp.text,
+            )
             if vs_match:
                 viewstate = vs_match.group(1)
                 self._log(f"Found ViewState: {viewstate[:50]}...")
@@ -223,7 +225,10 @@ class DocketDownloader:
                 self._log("MFA step required, submitting OTP via PrimeFaces AJAX...")
 
                 # Get new ViewState for MFA form
-                vs_match = re.search(r'name="(?:javax|jakarta)\.faces\.ViewState"[^>]*value="([^"]*)"', resp.text)
+                vs_match = re.search(
+                    r'name="(?:javax|jakarta)\.faces\.ViewState"[^>]*value="([^"]*)"',
+                    resp.text,
+                )
                 mfa_viewstate = vs_match.group(1) if vs_match else ""
 
                 from .auth import generate_totp
@@ -316,7 +321,7 @@ class DocketDownloader:
         # District courts typically use format like nysd, cacd
         return f"https://ecf.{court_abbrev}.uscourts.gov"
 
-    def _get_case_id_from_link(self, case_link: str) -> Optional[str]:
+    def _get_case_id_from_link(self, case_link: str) -> str | None:
         """Extract case ID from a PCL case link URL.
 
         Args:
@@ -332,7 +337,7 @@ class DocketDownloader:
         self,
         case_link: str,
         output_dir: Path,
-        filename: Optional[str] = None,
+        filename: str | None = None,
     ) -> DownloadResult:
         """Download docket using a PCL case link URL.
 
@@ -413,7 +418,10 @@ class DocketDownloader:
 
                     # Retry the request after login
                     resp = self.session.get(case_link, headers=headers, timeout=30)
-                    self._log(f"After CSO login, response: {resp.status_code}, length: {len(resp.text)}")
+                    self._log(
+                        f"After CSO login, response: {resp.status_code}, "
+                        f"length: {len(resp.text)}"
+                    )
 
                     # Check again for JS redirect (login may have failed)
                     if "location.assign" in resp.text and "csologin" in resp.text:
@@ -456,7 +464,9 @@ class DocketDownloader:
 
                 # Extract the form action URL (contains session token)
                 import re
-                form_action_match = re.search(r'<FORM[^>]*action="([^"]+)"', resp.text, re.IGNORECASE)
+                form_action_match = re.search(
+                    r'<FORM[^>]*action="([^"]+)"', resp.text, re.IGNORECASE
+                )
                 if form_action_match:
                     form_action = form_action_match.group(1)
                     # Handle relative URLs
@@ -469,7 +479,11 @@ class DocketDownloader:
                     self._log("No form action found, using docket URL")
 
                 # Extract hidden form fields
-                hidden_fields = re.findall(r'<input[^>]*type="hidden"[^>]*name="([^"]*)"[^>]*value="([^"]*)"', resp.text, re.IGNORECASE)
+                hidden_fields = re.findall(
+                    r'<input[^>]*type="hidden"[^>]*name="([^"]*)"[^>]*value="([^"]*)"',
+                    resp.text,
+                    re.IGNORECASE,
+                )
 
                 # Submit form with default options (all entries)
                 form_data = {
@@ -532,7 +546,10 @@ class DocketDownloader:
                 )
                 docs_filepath = output_dir / "docs.json"
                 docs_filepath.write_text(json.dumps(docs_meta, indent=2), encoding="utf-8")
-                self._log(f"Saved docs.json to: {docs_filepath} ({docs_meta.get('document_count', 0)} docs)")
+                self._log(
+                    f"Saved docs.json to: {docs_filepath} "
+                    f"({docs_meta.get('document_count', 0)} docs)"
+                )
             except Exception as e:
                 self._log(f"Warning: Could not save docs.json: {e}")
 
@@ -552,7 +569,7 @@ class DocketDownloader:
         case_number: str,
         court_id: str,
         output_dir: Path,
-        filename: Optional[str] = None,
+        filename: str | None = None,
     ) -> DownloadResult:
         """Download docket by case number and court ID.
 
@@ -617,7 +634,7 @@ def download_docket(
     court_id: str,
     output_dir: Path,
     verbose: bool = False,
-    filename: Optional[str] = None,
+    filename: str | None = None,
 ) -> DownloadResult:
     """Convenience function to download a docket.
 
@@ -644,7 +661,7 @@ class DocumentDownloader:
     def __init__(self, config: PacerConfig, verbose: bool = False):
         self.config = config
         self.verbose = verbose
-        self._docket_dl: Optional[DocketDownloader] = None
+        self._docket_dl: DocketDownloader | None = None
         self.authenticated_courts: set[str] = set()
 
     def _log(self, msg: str):
@@ -713,7 +730,7 @@ class DocumentDownloader:
         self,
         doc_url: str,
         output_dir: Path,
-        filename: Optional[str] = None,
+        filename: str | None = None,
     ) -> DownloadResult:
         """Download a document from CM/ECF.
 
@@ -738,7 +755,10 @@ class DocumentDownloader:
 
         try:
             resp = self.session.get(doc_url, headers=headers, timeout=60, allow_redirects=True)
-            self._log(f"Response: {resp.status_code}, content-type: {resp.headers.get('content-type', 'unknown')}")
+            self._log(
+                f"Response: {resp.status_code}, "
+                f"content-type: {resp.headers.get('content-type', 'unknown')}"
+            )
 
             # Check for login redirect early (before following any links)
             if self._is_login_redirect(resp):
@@ -776,46 +796,79 @@ class DocumentDownloader:
                 if 'View Document' in resp.text and 'goDLS' in resp.text:
                     self._log("PACER receipt page detected, extracting goDLS params...")
 
-                    # Extract goDLS parameters: goDLS(path, caseid, de_seq, got_receipt, pdf_hdr, pdf_toggle, magic, hdr, psf)
+                    # Extract goDLS parameters: goDLS(path, caseid, de_seq,
+                    # got_receipt, pdf_hdr, pdf_toggle, magic, hdr, psf)
                     godls_match = re.search(
                         r"goDLS\('([^']+)','([^']+)','([^']+)','([^']*)','([^']*)','([^']*)','([^']*)','([^']*)','([^']*)'\)",
                         resp.text
                     )
                     if godls_match:
-                        path, caseid, de_seq, got_receipt, pdf_hdr, pdf_toggle, magic, hdr, psf = godls_match.groups()
+                        (
+                            path,
+                            caseid,
+                            de_seq,
+                            got_receipt,
+                            pdf_hdr,
+                            pdf_toggle,
+                            magic,
+                            hdr,
+                            psf,
+                        ) = godls_match.groups()
 
                         # Build POST data from goDLS params
                         form_data = {}
-                        if caseid: form_data['caseid'] = caseid
-                        if de_seq: form_data['de_seq_num'] = de_seq
-                        if got_receipt: form_data['got_receipt'] = got_receipt
-                        if pdf_hdr: form_data['pdf_header'] = pdf_hdr
-                        if pdf_toggle: form_data['pdf_toggle_possible'] = pdf_toggle
-                        if magic: form_data['magic_num'] = magic
-                        if hdr: form_data['hdr'] = hdr
-                        if psf: form_data['psf_report'] = psf
+                        if caseid:
+                            form_data['caseid'] = caseid
+                        if de_seq:
+                            form_data['de_seq_num'] = de_seq
+                        if got_receipt:
+                            form_data['got_receipt'] = got_receipt
+                        if pdf_hdr:
+                            form_data['pdf_header'] = pdf_hdr
+                        if pdf_toggle:
+                            form_data['pdf_toggle_possible'] = pdf_toggle
+                        if magic:
+                            form_data['magic_num'] = magic
+                        if hdr:
+                            form_data['hdr'] = hdr
+                        if psf:
+                            form_data['psf_report'] = psf
 
                         parsed = urlparse(doc_url)
                         form_url = f"{parsed.scheme}://{parsed.netloc}{path}"
 
                         self._log(f"POSTing to {form_url} with goDLS params: {form_data}")
-                        resp = self.session.post(form_url, data=form_data, headers=headers, timeout=120)
-                        self._log(f"goDLS POST response: {resp.status_code}, type: {resp.headers.get('content-type', 'unknown')}")
+                        resp = self.session.post(
+                            form_url, data=form_data, headers=headers, timeout=120
+                        )
+                        self._log(
+                            f"goDLS POST response: {resp.status_code}, "
+                            f"type: {resp.headers.get('content-type', 'unknown')}"
+                        )
 
                         # PACER returns HTML with iframe containing PDF URL
-                        if 'text/html' in resp.headers.get('content-type', '') and '<iframe' in resp.text:
+                        if (
+                            "text/html" in resp.headers.get("content-type", "")
+                            and "<iframe" in resp.text
+                        ):
                             iframe_match = re.search(r'<iframe[^>]+src="([^"]+)"', resp.text)
                             if iframe_match:
                                 pdf_path = iframe_match.group(1)
                                 pdf_url = f"{parsed.scheme}://{parsed.netloc}{pdf_path}"
                                 self._log(f"Following iframe to PDF: {pdf_url}")
                                 resp = self.session.get(pdf_url, headers=headers, timeout=120)
-                                self._log(f"PDF response: {resp.status_code}, type: {resp.headers.get('content-type', 'unknown')}, size: {len(resp.content)}")
+                                self._log(
+                                    f"PDF response: {resp.status_code}, "
+                                    f"type: {resp.headers.get('content-type', 'unknown')}, "
+                                    f"size: {len(resp.content)}"
+                                )
 
                 # Fallback: check for other form types
                 elif '<form' in resp.text.lower():
                     self._log("Other form detected, extracting hidden fields...")
-                    form_action_match = re.search(r"<form[^>]*action=['\"]([^'\"]+)['\"]", resp.text, re.IGNORECASE)
+                    form_action_match = re.search(
+                        r"<form[^>]*action=['\"]([^'\"]+)['\"]", resp.text, re.IGNORECASE
+                    )
                     if form_action_match:
                         form_url = form_action_match.group(1)
                         if not form_url.startswith('http'):
@@ -827,7 +880,9 @@ class DocumentDownloader:
                             resp.text, re.IGNORECASE
                         )
                         form_data = dict(hidden_fields)
-                        resp = self.session.post(form_url, data=form_data, headers=headers, timeout=60)
+                        resp = self.session.post(
+                            form_url, data=form_data, headers=headers, timeout=60
+                        )
                         self._log(f"Form submission response: {resp.status_code}")
 
             # Check for login redirect after following links

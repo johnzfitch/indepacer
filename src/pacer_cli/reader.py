@@ -288,9 +288,17 @@ class DocketParser:
         base = None
         for table in tables:
             filter_text = table.get_text().lower()
-            if "jury demand" in filter_text or "date filed" in filter_text or "docket text" in filter_text:
+            if (
+                "jury demand" in filter_text
+                or "date filed" in filter_text
+                or "docket text" in filter_text
+            ):
                 continue
-            if "plaintiff" in filter_text and "defendant" in filter_text and "represented" in filter_text:
+            if (
+                "plaintiff" in filter_text
+                and "defendant" in filter_text
+                and "represented" in filter_text
+            ):
                 base = table
 
         if not base:
@@ -504,7 +512,9 @@ class DocketParser:
                 base_name = file.replace(".html", "")
                 output_file = self.output_path / f"{base_name}.csv"
                 case_meta_file = self.output_meta_path / "case_meta" / f"case_meta_{base_name}.json"
-                download_meta_file = self.output_meta_path / "download_meta" / f"download_meta_{base_name}.json"
+                download_meta_file = (
+                    self.output_meta_path / "download_meta" / f"download_meta_{base_name}.json"
+                )
 
                 if not overwrite and output_file.exists():
                     continue
@@ -642,7 +652,7 @@ class DocketProcessor:
         ]
 
         docket_path = self.processed_path / docket
-        with open(docket_path, "r", newline="", encoding="utf-8") as f:
+        with open(docket_path, newline="", encoding="utf-8") as f:
             reader = csv.reader(f, dialect="excel")
             for row in reader:
                 if not header_passed:
@@ -723,7 +733,7 @@ class DocketProcessor:
         output_file = self.output_path / f"all_match__{suffix}.csv"
 
         if not overwrite_flag and output_file.exists():
-            raise IOError(
+            raise OSError(
                 f'A .csv with the suffix "{suffix}" already exists. '
                 "Choose new suffix or specify overwrite_flag."
             )
@@ -763,7 +773,7 @@ class DocketProcessor:
                 for f in result_path.iterdir():
                     f.unlink()
             else:
-                raise IOError(
+                raise OSError(
                     f'.csv files with the suffix "{suffix}" already exist. '
                     "Choose new suffix or specify overwrite_flag."
                 )

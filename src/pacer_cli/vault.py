@@ -16,7 +16,6 @@ import os
 import secrets
 from base64 import b64decode, b64encode
 from pathlib import Path
-from typing import Optional
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
@@ -58,7 +57,7 @@ class VaultError(Exception):
     pass
 
 
-class VaultLocked(VaultError):
+class VaultLocked(VaultError):  # noqa: N818
     """Vault is locked, call unlock() first."""
     pass
 
@@ -72,9 +71,9 @@ class PacerVault:
 
     def __init__(self, path: Path = VAULT_PATH):
         self.path = path
-        self._key: Optional[bytes] = None
+        self._key: bytes | None = None
         self._data: dict = {}
-        self._salt: Optional[bytes] = None
+        self._salt: bytes | None = None
 
     @property
     def is_locked(self) -> bool:
@@ -125,7 +124,7 @@ class PacerVault:
         if not self.exists:
             raise VaultError(f"No vault at {self.path}, run init() first")
 
-        with open(self.path, "r") as f:
+        with open(self.path) as f:
             vault_data = json.load(f)
 
         self._salt = b64decode(vault_data["salt"])
@@ -153,7 +152,7 @@ class PacerVault:
         self._key = None
         self._data = {}
 
-    def get(self, name: str) -> Optional[str]:
+    def get(self, name: str) -> str | None:
         """Get a decrypted secret by name."""
         if self.is_locked:
             raise VaultLocked("Vault is locked")

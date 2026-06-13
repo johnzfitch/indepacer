@@ -10,7 +10,7 @@ import json
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 @lru_cache(maxsize=1)
@@ -23,7 +23,7 @@ def _load_court_data() -> list[dict[str, Any]]:
 
 
 @lru_cache(maxsize=256)
-def get_court_by_ecf_domain(ecf_domain: str) -> Optional[dict[str, Any]]:
+def get_court_by_ecf_domain(ecf_domain: str) -> dict[str, Any] | None:
     """Look up court info by ECF domain name.
 
     Args:
@@ -46,7 +46,7 @@ def get_court_by_ecf_domain(ecf_domain: str) -> Optional[dict[str, Any]]:
 
 
 @lru_cache(maxsize=256)
-def get_court_by_id(court_id: str) -> Optional[dict[str, Any]]:
+def get_court_by_id(court_id: str) -> dict[str, Any] | None:
     """Look up court info by court ID.
 
     Args:
@@ -64,7 +64,7 @@ def get_court_by_id(court_id: str) -> Optional[dict[str, Any]]:
     return None
 
 
-def get_cso_court_id(ecf_domain: str) -> Optional[str]:
+def get_cso_court_id(ecf_domain: str) -> str | None:
     """Get CSO court ID from ECF domain.
 
     Args:
@@ -83,7 +83,7 @@ def get_cso_court_id(ecf_domain: str) -> Optional[str]:
     return court.get("court_id") if court else None
 
 
-def get_ecf_url(court_id: str) -> Optional[str]:
+def get_ecf_url(court_id: str) -> str | None:
     """Get ECF login URL from court ID.
 
     Args:
@@ -100,7 +100,7 @@ def get_ecf_url(court_id: str) -> Optional[str]:
     return court.get("login_url") if court else None
 
 
-def get_ecf_domain_from_url(url: str) -> Optional[str]:
+def get_ecf_domain_from_url(url: str) -> str | None:
     """Extract ECF domain from a URL.
 
     Args:
@@ -117,7 +117,7 @@ def get_ecf_domain_from_url(url: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
-def get_court_name(court_id: str) -> Optional[str]:
+def get_court_name(court_id: str) -> str | None:
     """Get human-readable court name.
 
     Args:
@@ -130,7 +130,7 @@ def get_court_name(court_id: str) -> Optional[str]:
     return court.get("court_name") or court.get("title") if court else None
 
 
-def get_court_type(court_id: str) -> Optional[str]:
+def get_court_type(court_id: str) -> str | None:
     """Get court type (District, Bankruptcy, Appeals).
 
     Args:
@@ -143,7 +143,7 @@ def get_court_type(court_id: str) -> Optional[str]:
     return court.get("type") if court else None
 
 
-def list_courts(court_type: Optional[str] = None) -> list[dict[str, str]]:
+def list_courts(court_type: str | None = None) -> list[dict[str, str]]:
     """List all courts, optionally filtered by type.
 
     Args:
@@ -167,7 +167,7 @@ def list_courts(court_type: Optional[str] = None) -> list[dict[str, str]]:
     return result
 
 
-def normalize_court_id(court_id: str) -> Optional[str]:
+def normalize_court_id(court_id: str) -> str | None:
     """Normalize various court ID formats to CSO format.
 
     Handles:
@@ -215,7 +215,7 @@ def normalize_court_id(court_id: str) -> Optional[str]:
 # reach).
 
 
-def _courts_csv_path() -> "Path":
+def _courts_csv_path() -> Path:
     # Imported lazily to avoid a courts <-> config import cycle at module load.
     from .config import PACER_ROOT
 
@@ -255,7 +255,7 @@ def read_courts_scope() -> dict[str, bool]:
     return scope
 
 
-def write_courts_scope(scope: dict[str, bool]) -> "Path":
+def write_courts_scope(scope: dict[str, bool]) -> Path:
     """Write {court_id: enabled} to courts.csv (sorted), creating dirs as needed."""
     path = _courts_csv_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -269,7 +269,7 @@ def write_courts_scope(scope: dict[str, bool]) -> "Path":
     return path
 
 
-def enabled_court_ids() -> Optional[list[str]]:
+def enabled_court_ids() -> list[str] | None:
     """Enabled court IDs for scoping a search, or None for no scope (nationwide).
 
     Raw view used by ``pacer courts status``: None when courts.csv is absent or
@@ -290,7 +290,7 @@ def enabled_court_ids() -> Optional[list[str]]:
     return enabled
 
 
-def resolve_court_scope(explicit_courts) -> Optional[list[str]]:
+def resolve_court_scope(explicit_courts) -> list[str] | None:
     """The single open/off switch for scoping a billable search.
 
     One source of truth so callers never re-implement the rule (which is how an

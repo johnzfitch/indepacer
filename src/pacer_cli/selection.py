@@ -1,6 +1,5 @@
 """Interactive selection utilities for CLI."""
 
-from typing import List, Optional, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
@@ -15,7 +14,7 @@ console = Console()
 class CaseSelector:
     """Interactive case selection from search results."""
 
-    def __init__(self, results: List[CaseResult], page_size: int = 20):
+    def __init__(self, results: list[CaseResult], page_size: int = 20):
         self.results = results
         self.page_size = page_size
         self.current_page = 0
@@ -51,7 +50,7 @@ class CaseSelector:
         console.print(table)
         console.print(f"[dim]{len(self.results)} total results[/]")
 
-    def prompt_selection(self) -> Optional[CaseResult]:
+    def prompt_selection(self) -> CaseResult | None:
         """Prompt user for single case selection."""
         self.display_page()
 
@@ -83,7 +82,7 @@ class CaseSelector:
             except ValueError:
                 console.print("[yellow]Enter a number or n/p/q[/]")
 
-    def prompt_multi_selection(self) -> List[CaseResult]:
+    def prompt_multi_selection(self) -> list[CaseResult]:
         """Select multiple cases with '1,3,5-10' syntax."""
         self.display_page()
 
@@ -114,7 +113,7 @@ class CaseSelector:
 
         return selected
 
-    def prompt_action(self, case: CaseResult) -> Optional[str]:
+    def prompt_action(self, case: CaseResult) -> str | None:
         """Prompt for action on selected case."""
         console.print(
             Panel(
@@ -138,7 +137,7 @@ class CaseSelector:
         return action
 
 
-def interactive_case_select(results: List[CaseResult]) -> Optional[Tuple[CaseResult, str]]:
+def interactive_case_select(results: list[CaseResult]) -> tuple[CaseResult, str] | None:
     """Run interactive selection loop.
 
     Returns:
@@ -164,7 +163,7 @@ def interactive_case_select(results: List[CaseResult]) -> Optional[Tuple[CaseRes
             return (case, action)
 
 
-def interactive_multi_select(results: List[CaseResult]) -> List[CaseResult]:
+def interactive_multi_select(results: list[CaseResult]) -> list[CaseResult]:
     """Run interactive multi-selection.
 
     Returns:
